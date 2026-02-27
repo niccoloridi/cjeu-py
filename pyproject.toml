@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cjeu-py"
+version = "0.1.0"
+description = "Python toolkit for empirical research on the Court of Justice of the European Union"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Niccolò Ridi"},
+]
+keywords = [
+    "CJEU", "Court of Justice", "European Union", "case law",
+    "citation analysis", "CELLAR", "empirical legal studies",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyarrow>=14.0",
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=4.9",
+    "aiohttp>=3.9",
+    "SPARQLWrapper>=2.0",
+    "rdflib>=7.0",
+    "regex>=2023.0",
+    "tqdm>=4.65",
+    "jsonlines>=4.0",
+]
+
+[project.optional-dependencies]
+llm = ["google-genai>=1.0"]
+analysis = ["networkx>=3.1", "scipy>=1.11", "scikit-learn>=1.3", "statsmodels>=0.14"]
+viz = ["matplotlib>=3.7", "seaborn>=0.12"]
+all = ["cjeu-py[llm,analysis,viz]"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+cjeu-py = "cjeu_py.main:main"
+
+[project.urls]
+Repository = "https://github.com/niccoloridi/cjeu-py"
+Issues = "https://github.com/niccoloridi/cjeu-py/issues"
+
+[tool.setuptools.packages.find]
+include = ["cjeu_py*"]

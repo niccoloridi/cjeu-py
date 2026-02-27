@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "cjeu-py"
+abstract: "A Python toolkit for empirical research on the Court of Justice of the European Union. Collects structured data from the EU's CELLAR endpoint, parses judgment texts, extracts and classifies case-law citations, and builds research-ready datasets."
+authors:
+  - family-names: "Ridi"
+    given-names: "Niccolò"
+    orcid: "https://orcid.org/0000-0002-7118-9555"
+version: "0.1.0"
+date-released: "2026-02-26"
+license: MIT
+repository-code: "https://github.com/niccoloridi/cjeu-py"
+keywords:
+  - CJEU
+  - Court of Justice
+  - European Union
+  - case law
+  - citation analysis
+  - CELLAR
+  - empirical legal studies
+  - NLP
