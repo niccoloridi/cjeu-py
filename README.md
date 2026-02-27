@@ -210,9 +210,9 @@ Three detection layers run in sequence:
 
 Citations are anchored to their source paragraph and enriched with configurable context windows for downstream classification.
 
-## Classification taxonomy
+## Classification taxonomy (optional)
 
-Citations are classified along four dimensions using Gemini 2.5 Flash with structured JSON output:
+If you have a Gemini API key, extracted citations can optionally be classified along four dimensions using Gemini 2.5 Flash with structured JSON output. Classification requires judgment texts to have been downloaded and citations extracted first (`fetch-texts` → `extract-citations` → `classify`).
 
 | Dimension | Categories |
 |-----------|------------|
@@ -256,6 +256,10 @@ cjeu-py/
 ```bash
 python -m pytest tests/ -v
 ```
+
+## If you use R
+
+If R is your preferred language, see Michal Ovádek's [eurlex](https://michalovadek.github.io/eurlex/) package, which provides access to EUR-Lex data including CJEU case law via the CELLAR SPARQL endpoint.
 
 ## Acknowledgements
 
