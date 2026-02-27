@@ -1,6 +1,6 @@
 # cjeu-py
 
-A Python toolkit for empirical research on the Court of Justice of the European Union (CJEU). Collects structured data from the EU's CELLAR endpoint, parses judgment texts, extracts and classifies case-law citations, and builds research-ready datasets.
+A Python toolkit for empirical research on the Court of Justice of the European Union (CJEU). Collects structured data from the EU's CELLAR endpoint, parses judgment texts, extracts case-law citations, and builds research-ready datasets. Citations can optionally be classified by an LLM.
 
 ## Why Python
 
@@ -17,9 +17,9 @@ The goal is a toolkit that fits naturally into the workflows that computational 
 | **Parse** | Court composition, parties, representatives, procedural dates | XHTML header parser (structural, not heuristic) |
 | **Derive** | Judge assignments, case names, operative parts | Flattened from parsed headers |
 | **Extract** | Case-law citations with paragraph-level context | Regex (14 patterns) + italic markers + party name matching |
-| **Classify** | Precision, use, treatment, topic of each citation | Gemini structured JSON output |
-| **Validate** | Classification quality | Stratified sample export for human coding |
-| **Scrape** | Judge biographical data (all current and former members) | Curia.europa.eu + LLM structured extraction |
+| **Classify** *(optional)* | Precision, use, treatment, topic of each citation | Gemini structured JSON output (requires API key) |
+| **Validate** *(optional)* | Classification quality | Stratified sample export for human coding |
+| **Scrape** *(optional)* | Judge biographical data (all current and former members) | Curia.europa.eu + LLM structured extraction (requires API key) |
 | **Network** | Interactive citation network with centrality metrics, community detection, subject/procedure/year filters | Self-contained HTML (D3.js), GEXF (Gephi / Gephi Lite), D3 JSON |
 | **Export** | All tables as CSV or Excel | `cjeu-py export --format csv` |
 
