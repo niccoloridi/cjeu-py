@@ -4,7 +4,7 @@ A Python toolkit for empirical research on the Court of Justice of the European 
 
 ## Why Python
 
-cjeu-py is designed to be idiomatically Pythonic: `pip install -e .`, a CLI entry point, pandas DataFrames in and out, standard logging, and a flat module structure you can import piecemeal. Data flows through the pipeline as Parquet files and JSONL logs, so each stage is independently inspectable and resumable. LLM classification uses structured JSON output rather than hand-coded labels, making taxonomies easy to extend.
+cjeu-py is designed to be idiomatically Pythonic: `pip install cjeu-py`, a CLI entry point, pandas DataFrames in and out, standard logging, and a flat module structure you can import piecemeal. Data flows through the pipeline as Parquet files and JSONL logs, so each stage is independently inspectable and resumable. LLM classification uses structured JSON output rather than hand-coded labels, making taxonomies easy to extend.
 
 The goal is a toolkit that fits naturally into the workflows that computational social scientists and NLP researchers already use – Jupyter notebooks, pandas, scikit-learn, HuggingFace – without requiring a separate ecosystem.
 
@@ -58,8 +58,11 @@ Networks above 5,000 nodes trigger a performance warning; above 10,000 a stronge
 ## Quick start
 
 ```bash
-# Install
-pip install -e .
+# Install from PyPI
+pip install cjeu-py
+
+# Or install with all optional dependencies (LLM, network analysis, visualisation)
+pip install cjeu-py[all]
 
 # Set your Gemini API key (only needed for classification)
 export GEMINI_API_KEY="your-key-here"
