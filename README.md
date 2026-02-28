@@ -1,6 +1,17 @@
-# cjeu-py
+<p align="center">
+  <img src="docs/logo.svg" alt="cjeu-py" width="400">
+</p>
 
-A Python toolkit for empirical research on the Court of Justice of the European Union (CJEU). Collects structured data from the EU's CELLAR endpoint, parses judgment texts, extracts case-law citations, and builds research-ready datasets. Citations can optionally be classified by an LLM.
+<p align="center">
+  A Python toolkit for empirical research on the Court of Justice of the European Union (CJEU).<br>
+  Collects structured data from the EU's CELLAR endpoint, parses judgment texts, extracts case-law citations, and builds research-ready datasets. Citations can optionally be classified by an LLM.
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/cjeu-py/"><img src="https://img.shields.io/pypi/v/cjeu-py" alt="PyPI"></a>
+  <a href="https://pypi.org/project/cjeu-py/"><img src="https://img.shields.io/pypi/pyversions/cjeu-py" alt="Python"></a>
+  <a href="https://github.com/niccoloridi/cjeu-py/blob/main/LICENSE"><img src="https://img.shields.io/github/license/niccoloridi/cjeu-py" alt="License"></a>
+</p>
 
 ## Why Python
 
@@ -39,6 +50,10 @@ The HTML export provides:
 - **Interactive controls** – node sizing (by any centrality metric, with user-definable min/max radius), node colouring (community, procedure type, year, court, or formation), edge thickness scaling, toggleable community hull shading
 - **Filters** – year range slider, court checkboxes (CJ/GC/CST), subject matter checkboxes (36 case-law subject codes with human-readable labels, sorted by frequency), procedure type checkboxes, with All/None toggles
 - **Detail sidebar** – click any node to see collapsible sections: case metadata (CELEX, ECLI, date, court, formation, procedure, judge-rapporteur, AG, subjects), centrality metrics, procedural links (joined cases, appeals, interveners, annulled acts), legislation links, academic citations, and citing/cited-by lists. Available sections depend on which metadata tiers have been downloaded
+
+<p align="center">
+  <img src="docs/network_screenshot.png" alt="Interactive citation network" width="800">
+</p>
 
 A pre-built example is available at [`examples/grand_chamber_network.html`](examples/grand_chamber_network.html) — download and open in a browser. It contains the 500 most central Grand Chamber cases (by PageRank) plus cases they cite.
 

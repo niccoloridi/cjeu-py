@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160" width="400" height="160">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#002266"/>
+      <stop offset="100%" stop-color="#003399"/>
+    </linearGradient>
+    <!-- 5-pointed star, outer r≈3.6, inner r≈1.4 -->
+    <symbol id="s" viewBox="-4 -4 8 8">
+      <polygon points="0,-3.6 0.84,-1.15 3.42,-1.11 1.35,0.44 2.11,2.91 0,1.42 -2.11,2.91 -1.35,0.44 -3.42,-1.11 -0.84,-1.15" fill="#FFCC00"/>
+    </symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="160" rx="12" ry="12" fill="url(#bg)"/>
+
+  <!-- Faint radial rings inside emblem (analytical precision motif) -->
+  <circle cx="85" cy="80" r="40" fill="none" stroke="#ffffff" stroke-width="0.3" opacity="0.04"/>
+  <circle cx="85" cy="80" r="27" fill="none" stroke="#ffffff" stroke-width="0.3" opacity="0.03"/>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!--  CITATION NETWORK (edges behind nodes)      -->
+  <!--  Center of emblem: 85, 80                   -->
+  <!-- ════════════════════════════════════════════ -->
+
+  <!-- Network edges — varying weight suggests citation strength -->
+  <g fill="none" stroke-linecap="round">
+    <!-- Hub edges (from central authority) -->
+    <line x1="85" y1="80" x2="70" y2="66" stroke="#FFCC00" stroke-opacity="0.30" stroke-width="1.4"/>
+    <line x1="85" y1="80" x2="101" y2="68" stroke="#FFCC00" stroke-opacity="0.28" stroke-width="1.3"/>
+    <line x1="85" y1="80" x2="66" y2="90" stroke="#FFCC00" stroke-opacity="0.22" stroke-width="1.0"/>
+    <line x1="85" y1="80" x2="106" y2="88" stroke="#FFCC00" stroke-opacity="0.22" stroke-width="1.0"/>
+    <line x1="85" y1="80" x2="77" y2="100" stroke="#FFCC00" stroke-opacity="0.20" stroke-width="0.9"/>
+    <line x1="85" y1="80" x2="97" y2="98" stroke="#FFCC00" stroke-opacity="0.20" stroke-width="0.9"/>
+    <!-- Cross-links (inter-case citations) -->
+    <line x1="70" y1="66" x2="101" y2="68" stroke="#4477cc" stroke-opacity="0.18" stroke-width="0.7"/>
+    <line x1="70" y1="66" x2="66" y2="90" stroke="#4477cc" stroke-opacity="0.14" stroke-width="0.6"/>
+    <line x1="101" y1="68" x2="106" y2="88" stroke="#4477cc" stroke-opacity="0.14" stroke-width="0.6"/>
+    <line x1="66" y1="90" x2="77" y2="100" stroke="#4477cc" stroke-opacity="0.12" stroke-width="0.5"/>
+    <line x1="106" y1="88" x2="97" y2="98" stroke="#4477cc" stroke-opacity="0.12" stroke-width="0.5"/>
+    <line x1="77" y1="100" x2="97" y2="98" stroke="#4477cc" stroke-opacity="0.10" stroke-width="0.5"/>
+    <!-- Leaf edges -->
+    <line x1="70" y1="66" x2="57" y2="57" stroke="#4477cc" stroke-opacity="0.08" stroke-width="0.4"/>
+    <line x1="101" y1="68" x2="114" y2="60" stroke="#4477cc" stroke-opacity="0.08" stroke-width="0.4"/>
+    <line x1="66" y1="90" x2="54" y2="99" stroke="#4477cc" stroke-opacity="0.08" stroke-width="0.4"/>
+    <line x1="106" y1="88" x2="116" y2="96" stroke="#4477cc" stroke-opacity="0.08" stroke-width="0.4"/>
+  </g>
+
+  <!-- Node halos (faked glow — GitHub strips <filter>) -->
+  <circle cx="85" cy="80" r="11" fill="#FFCC00" opacity="0.06"/>
+  <circle cx="70" cy="66" r="7" fill="#4488dd" opacity="0.05"/>
+  <circle cx="101" cy="68" r="7" fill="#4488dd" opacity="0.05"/>
+  <circle cx="66" cy="90" r="6" fill="#4488dd" opacity="0.04"/>
+  <circle cx="106" cy="88" r="6" fill="#4488dd" opacity="0.04"/>
+  <circle cx="77" cy="100" r="6" fill="#4488dd" opacity="0.04"/>
+  <circle cx="97" cy="98" r="6" fill="#4488dd" opacity="0.04"/>
+
+  <!-- Network nodes -->
+  <g>
+    <!-- Central authority (gold — highest PageRank) -->
+    <circle cx="85" cy="80" r="5.5" fill="#FFCC00" opacity="0.92"/>
+    <circle cx="85" cy="80" r="2.2" fill="#ffffff" opacity="0.25"/>
+    <!-- Secondary cases -->
+    <circle cx="70" cy="66" r="3.8" fill="#5599ee" opacity="0.85"/>
+    <circle cx="101" cy="68" r="4.0" fill="#5599ee" opacity="0.85"/>
+    <circle cx="66" cy="90" r="3.0" fill="#5599ee" opacity="0.75"/>
+    <circle cx="106" cy="88" r="3.2" fill="#5599ee" opacity="0.75"/>
+    <circle cx="77" cy="100" r="2.8" fill="#5599ee" opacity="0.70"/>
+    <circle cx="97" cy="98" r="3.0" fill="#5599ee" opacity="0.70"/>
+    <!-- Leaf / periphery cases -->
+    <circle cx="57" cy="57" r="1.6" fill="#7aadee" opacity="0.45"/>
+    <circle cx="114" cy="60" r="1.7" fill="#7aadee" opacity="0.45"/>
+    <circle cx="54" cy="99" r="1.5" fill="#7aadee" opacity="0.40"/>
+    <circle cx="116" cy="96" r="1.6" fill="#7aadee" opacity="0.40"/>
+  </g>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!--  12 EU STARS (r=50 from center 85,80)       -->
+  <!--  Positioned at 30° intervals                -->
+  <!-- ════════════════════════════════════════════ -->
+  <g opacity="0.82">
+    <use href="#s" x="81.5" y="26.5" width="7" height="7"/>   <!--   0° -->
+    <use href="#s" x="106.5" y="33.2" width="7" height="7"/>  <!--  30° -->
+    <use href="#s" x="124.8" y="51.5" width="7" height="7"/>  <!--  60° -->
+    <use href="#s" x="131.5" y="76.5" width="7" height="7"/>  <!--  90° -->
+    <use href="#s" x="124.8" y="101.5" width="7" height="7"/> <!-- 120° -->
+    <use href="#s" x="106.5" y="119.8" width="7" height="7"/> <!-- 150° -->
+    <use href="#s" x="81.5" y="126.5" width="7" height="7"/>  <!-- 180° -->
+    <use href="#s" x="56.5" y="119.8" width="7" height="7"/>  <!-- 210° -->
+    <use href="#s" x="38.2" y="101.5" width="7" height="7"/>  <!-- 240° -->
+    <use href="#s" x="31.5" y="76.5" width="7" height="7"/>   <!-- 270° -->
+    <use href="#s" x="38.2" y="51.5" width="7" height="7"/>   <!-- 300° -->
+    <use href="#s" x="56.5" y="33.2" width="7" height="7"/>   <!-- 330° -->
+  </g>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!--  TYPOGRAPHY                                  -->
+  <!-- ════════════════════════════════════════════ -->
+
+  <!-- Package name -->
+  <text x="178" y="76" font-family="'Consolas', 'SF Mono', 'Fira Code', 'Liberation Mono', monospace" font-size="44" font-weight="700" letter-spacing="-0.5">
+    <tspan fill="#ffffff">cjeu</tspan><tspan fill="#FFCC00">-</tspan><tspan fill="#ffffff">py</tspan>
+  </text>
+
+  <!-- Thin gold accent rule -->
+  <line x1="178" y1="86" x2="290" y2="86" stroke="#FFCC00" stroke-opacity="0.35" stroke-width="1"/>
+
+  <!-- Tagline -->
+  <text x="178" y="103" font-family="'Segoe UI', 'Helvetica Neue', 'Liberation Sans', Arial, sans-serif" font-size="10.8" fill="#7a9cc7" letter-spacing="2.6" font-weight="400">
+    EMPIRICAL CJEU RESEARCH
+  </text>
+
+  <!-- Pipeline summary: three key verbs -->
+  <text x="178" y="124" font-family="'Consolas', 'SF Mono', 'Fira Code', 'Liberation Mono', monospace" font-size="9.5" letter-spacing="0.2">
+    <tspan fill="#5580aa">collect</tspan>
+    <tspan fill="#3a5577" dx="2">·</tspan>
+    <tspan fill="#5580aa" dx="2">extract</tspan>
+    <tspan fill="#3a5577" dx="2">·</tspan>
+    <tspan fill="#5580aa" dx="2">classify</tspan>
+  </text>
+
+</svg>
