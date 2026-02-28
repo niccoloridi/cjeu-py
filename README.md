@@ -36,9 +36,11 @@ Each node carries PageRank, betweenness centrality, in-degree, out-degree, and a
 
 The HTML export provides:
 
-- **Interactive controls** – node sizing (by any centrality metric), node colouring (community, procedure type, or year), edge thickness scaling
-- **Filters** – year range slider, subject matter checkboxes (36 case-law subject codes with human-readable labels, sorted by frequency), procedure type checkboxes, with All/None toggles
-- **Detail sidebar** – click any node to see CELEX (linked to EUR-Lex), ECLI, case name, date, formation, procedure, judge-rapporteur, advocate general, subject chips, centrality scores, and full lists of citing/cited cases
+- **Interactive controls** – node sizing (by any centrality metric, with user-definable min/max radius), node colouring (community, procedure type, year, court, or formation), edge thickness scaling, toggleable community hull shading
+- **Filters** – year range slider, court checkboxes (CJ/GC/CST), subject matter checkboxes (36 case-law subject codes with human-readable labels, sorted by frequency), procedure type checkboxes, with All/None toggles
+- **Detail sidebar** – click any node to see collapsible sections: case metadata (CELEX, ECLI, date, court, formation, procedure, judge-rapporteur, AG, subjects), centrality metrics, procedural links (joined cases, appeals, interveners, annulled acts), legislation links, academic citations, and citing/cited-by lists. Available sections depend on which metadata tiers have been downloaded
+
+A pre-built example is available at [`examples/grand_chamber_network.html`](examples/grand_chamber_network.html) — download and open in a browser. It contains the 500 most central Grand Chamber cases (by PageRank) plus cases they cite
 
 ```bash
 # Full Grand Chamber network as interactive HTML
@@ -108,8 +110,11 @@ cjeu-py extract-citations
 # Merge data sources
 cjeu-py merge
 
-# Classify citations via LLM
+# Classify citations via LLM (5 concurrent workers, safe for free tier)
 cjeu-py classify --max-items 20
+
+# Use higher concurrency with a Tier 2 Gemini API key
+cjeu-py classify --max-workers 50
 
 # Export sample for human validation
 cjeu-py validate --sample-size 50
@@ -132,6 +137,29 @@ cjeu-py codebook
 
 All variable definitions are documented in [`CODEBOOK.md`](CODEBOOK.md).
 
+## Local model support
+
+Classification works with any OpenAI-compatible API -- including [Ollama](https://ollama.com), vLLM, llama.cpp, and LM Studio -- via the `--provider openai` flag.
+
+```bash
+# Start Ollama with Gemma 2
+ollama pull gemma2
+ollama serve
+
+# Classify using local Gemma 2
+cjeu-py classify --provider openai --model gemma2
+
+# Use a different endpoint (e.g. vLLM on a remote server)
+cjeu-py classify --provider openai --model meta-llama/Llama-3.1-8B \
+    --api-base http://gpu-server:8000/v1
+
+# Use LM Studio
+cjeu-py classify --provider openai --model local-model \
+    --api-base http://localhost:1234/v1
+```
+
+Local models do not guarantee structured JSON output like Gemini does. The pipeline validates output against the expected schema and retries up to 3 times on malformed responses. Larger models (13B+) produce more reliable structured output.
+
 ## Search
 
 Query collected data or the live CELLAR endpoint directly from the command line.
@@ -140,7 +168,7 @@ Query collected data or the live CELLAR endpoint directly from the command line.
 
 ```bash
 # Full-text search across downloaded judgment paragraphs
-cjeu-py search text "autonomous legal order"
+cjeu-py search text "common market"
 cjeu-py search text "proportionality" --limit 50
 
 # Search by party name
@@ -273,11 +301,12 @@ cjeu-py/
 │   ├── citation_extraction/           # Regex patterns, context windows, party name matching
 │   ├── search.py                      # CLI search (8 modes: text, headnote, party, citing, etc.)
 │   ├── classification/                # LLM pipeline with checkpointing & cost tracking
-│   ├── llm/                           # Gemini API wrapper
+│   ├── llm/                           # Gemini + OpenAI-compatible API wrapper
 │   └── utils/                         # XHTML parsing, logging utilities
 │
+├── examples/                          # Pre-built example outputs
 ├── data/                              # Pipeline output (Parquet, JSONL, cached XHTML)
-├── tests/                             # 65 tests
+├── tests/                             # 93 tests
 ├── CODEBOOK.md                        # Variable definitions for all tables
 ├── CITATION.cff                       # Academic citation metadata
 ├── LICENSE                            # MIT

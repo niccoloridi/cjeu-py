@@ -193,9 +193,17 @@ def cmd_merge(args):
 def cmd_classify(args):
     """Run LLM classification on extracted citations."""
     import pandas as pd
-    from cjeu_py.classification.classifier import classify_single_citation
+    from cjeu_py.classification.classifier import classify_single_citation, configure_provider
     from cjeu_py.classification.pipeline import run_classification_pipeline
     from cjeu_py import config
+
+    # Configure LLM provider
+    configure_provider(
+        provider=getattr(args, "provider", "gemini"),
+        model=getattr(args, "model", None),
+        api_base=getattr(args, "api_base", None),
+        api_key=getattr(args, "api_key", None),
+    )
     
     # Load citations for classification
     cit_path = os.path.join(config.PROCESSED_DIR, "citations_for_classification.parquet")
@@ -523,6 +531,7 @@ def cmd_export_network(args):
         fmt=fmt,
         topic=args.topic,
         formation=args.formation,
+        court=getattr(args, "court", None),
         date_from=args.date_from,
         date_to=args.date_to,
         include_legislation=args.include_legislation,
@@ -606,7 +615,20 @@ def build_parser():
     # classify
     p = subparsers.add_parser("classify", help="Run LLM classification")
     p.add_argument("--max-items", type=int, default=None, help="Max citations to classify")
-    p.add_argument("--max-workers", type=int, default=None, help="Parallel workers (default: 30)")
+    p.add_argument("--max-workers", type=int, default=None,
+                   help="Parallel LLM API workers (default: 5, safe for free tier. "
+                        "Tier 2 Gemini keys can use 50-100)")
+    p.add_argument("--provider", type=str, default="gemini",
+                   choices=["gemini", "openai"],
+                   help="LLM provider: gemini (default) or openai "
+                        "(any OpenAI-compatible API: Ollama, vLLM, llama.cpp)")
+    p.add_argument("--model", type=str, default=None,
+                   help="Model name (default: gemini-2.5-flash / gemma2)")
+    p.add_argument("--api-base", type=str, default=None,
+                   help="API base URL for --provider openai "
+                        "(default: http://localhost:11434/v1)")
+    p.add_argument("--api-key", type=str, default=None,
+                   help="API key for --provider openai")
     
     # validate
     p = subparsers.add_parser("validate", help="Export human validation sample")
@@ -661,6 +683,8 @@ def build_parser():
                    help="Filter by subject matter (substring match)")
     p.add_argument("--formation", type=str, default=None,
                    help="Filter by court formation (e.g. GRAND_CH)")
+    p.add_argument("--court", type=str, default=None,
+                   help="Filter by court: CJ, TJ, FJ")
     p.add_argument("--date-from", type=str, default=None,
                    help="Earliest decision date (YYYY-MM-DD)")
     p.add_argument("--date-to", type=str, default=None,

@@ -16,6 +16,11 @@ if not GEMINI_API_KEY:
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_MODEL_PRO = "gemini-2.5-pro"  # for difficult/ambiguous cases
 
+# ── OpenAI-compatible provider (Ollama, vLLM, llama.cpp, LM Studio) ──────
+OPENAI_API_BASE = os.environ.get("OPENAI_API_BASE", "http://localhost:11434/v1")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "ollama")  # Ollama doesn't need a real key
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gemma2")
+
 # ── CELLAR / EUR-Lex endpoints ────────────────────────────────────────────────
 CELLAR_SPARQL_ENDPOINT = "https://publications.europa.eu/webapi/rdf/sparql"
 EURLEX_HTML_BASE = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:"
@@ -24,7 +29,7 @@ EURLEX_REST_BASE = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:"
 # ── Rate limits ───────────────────────────────────────────────────────────────
 EURLEX_RATE_LIMIT = 2.0       # seconds between EUR-Lex requests
 CELLAR_RATE_LIMIT = 0.5       # seconds between SPARQL queries
-GEMINI_MAX_WORKERS = 100      # concurrent Gemini API calls (high rate limit key)
+GEMINI_MAX_WORKERS = 5        # concurrent Gemini API calls (safe for free tier)
 GEMINI_SUBMIT_DELAY = 0.05    # seconds between submissions
 
 # ── Data paths ────────────────────────────────────────────────────────────────

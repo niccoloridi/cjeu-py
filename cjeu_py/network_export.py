@@ -6,10 +6,10 @@ Builds a directed citation graph from cached pipeline data, computes
 centrality metrics, and writes the network in a format ready for
 interactive exploration in Gephi Lite, Gephi desktop, or a browser.
 
-Node attributes include: date, year, court formation, procedure type,
+Node attributes include: date, year, court, formation, procedure type,
 case name, PageRank, betweenness centrality, in-degree, out-degree.
 
-Edge direction: citing → cited.
+Edge direction: citing -> cited.
 """
 import json
 import logging
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 NODE_WARN_THRESHOLD = 5_000
 NODE_HARD_WARN = 10_000
 
-# Case-law subject matter code → human-readable label
+# Case-law subject matter code -> human-readable label
 SUBJECT_LABELS = {
     "RAPL": "Rapprochement of legislation",
     "ETAB": "Freedom of establishment",
@@ -69,7 +69,7 @@ SUBJECT_LABELS = {
 
 
 def _load_pipeline_data(data_dir: str):
-    """Load decisions, citations, subjects, and case names from cached Parquet."""
+    """Load decisions, citations, subjects, case names, and optional metadata."""
     from cjeu_py import config
 
     cellar_dir = os.path.join(data_dir, "raw", "cellar")
@@ -99,14 +99,34 @@ def _load_pipeline_data(data_dir: str):
     if os.path.exists(names_path):
         case_names = pd.read_parquet(names_path)
 
-    return decisions, citations, subjects, case_names
+    # Optional metadata tiers (auto-detected)
+    extra = {}
+    optional_files = {
+        "joined_cases": "gc_joined_cases.parquet",
+        "appeals": "gc_appeals.parquet",
+        "interveners": "gc_interveners.parquet",
+        "annulled_acts": "gc_annulled_acts.parquet",
+        "legislation_links": "gc_legislation_links.parquet",
+        "academic_citations": "gc_academic_citations.parquet",
+    }
+    for key, filename in optional_files.items():
+        path = os.path.join(cellar_dir, filename)
+        if os.path.exists(path):
+            extra[key] = pd.read_parquet(path)
+            logger.info(f"  Loaded {key}: {len(extra[key])} rows")
+
+    return decisions, citations, subjects, case_names, extra
 
 
 def _filter_decisions(decisions, citations, subjects=None,
-                      topic=None, formation=None,
+                      topic=None, formation=None, court=None,
                       date_from=None, date_to=None):
     """Apply filters to the decision set and matching citations."""
     mask = pd.Series(True, index=decisions.index)
+
+    if court:
+        if "court_code" in decisions.columns:
+            mask &= decisions["court_code"].str.upper() == court.upper()
 
     if formation:
         if "formation_code" in decisions.columns:
@@ -147,10 +167,11 @@ def _filter_decisions(decisions, citations, subjects=None,
 
 
 def _build_graph(decisions, citations, case_names=None, subjects=None,
-                  case_law_only=True):
+                  extra=None, case_law_only=True):
     """Build a directed citation graph with node attributes."""
     G = nx.DiGraph()
     decision_set = set(decisions["celex"].tolist())
+    extra = extra or {}
 
     # Parse dates
     decisions = decisions.copy()
@@ -171,12 +192,65 @@ def _build_graph(decisions, citations, case_names=None, subjects=None,
                     "case_id": str(cid) if pd.notna(cid) else "",
                 }
 
-    # Subject lookup: celex → list of subject codes
+    # Subject lookup: celex -> list of subject codes
     subject_lookup = {}
     if subjects is not None and not subjects.empty:
         for celex, grp in subjects.groupby("celex"):
             codes = grp["subject_code"].dropna().unique().tolist()
             subject_lookup[celex] = codes
+
+    # Extra metadata lookups
+    joined_lookup = {}
+    if "joined_cases" in extra:
+        for celex, grp in extra["joined_cases"].groupby("celex"):
+            joined_lookup[celex] = grp["joined_celex"].dropna().unique().tolist()
+
+    interveners_lookup = {}
+    if "interveners" in extra:
+        col = "intervener" if "intervener" in extra["interveners"].columns else "intervener_agent_name"
+        for celex, grp in extra["interveners"].groupby("celex"):
+            interveners_lookup[celex] = grp[col].dropna().unique().tolist()
+
+    appeals_lookup = {}
+    if "appeals" in extra:
+        appeal_col = "appeal_celex" if "appeal_celex" in extra["appeals"].columns else "appealed_celex"
+        for celex, grp in extra["appeals"].groupby("celex"):
+            appeals_lookup[celex] = grp[appeal_col].dropna().unique().tolist()
+
+    annulled_lookup = {}
+    if "annulled_acts" in extra:
+        ann_col = "annulled_celex" if "annulled_celex" in extra["annulled_acts"].columns else "annulled_act"
+        for celex, grp in extra["annulled_acts"].groupby("celex"):
+            annulled_lookup[celex] = grp[ann_col].dropna().unique().tolist()
+
+    legislation_lookup = {}
+    if "legislation_links" in extra:
+        leg = extra["legislation_links"]
+        leg_celex_col = "legislation_celex" if "legislation_celex" in leg.columns else "linked_celex"
+        leg_type_col = "link_type" if "link_type" in leg.columns else "relation_type"
+        for celex, grp in leg.groupby("celex"):
+            items = []
+            for _, r in grp.iterrows():
+                lc = r.get(leg_celex_col, "")
+                lt = r.get(leg_type_col, "")
+                if pd.notna(lc):
+                    items.append({"celex": str(lc), "type": str(lt) if pd.notna(lt) else ""})
+            if items:
+                legislation_lookup[celex] = items
+
+    academic_lookup = {}
+    if "academic_citations" in extra:
+        for celex, grp in extra["academic_citations"].groupby("celex"):
+            items = []
+            for _, r in grp.iterrows():
+                item = {}
+                for c in grp.columns:
+                    if c != "celex" and pd.notna(r.get(c)):
+                        item[c] = str(r[c])
+                if item:
+                    items.append(item)
+            if items:
+                academic_lookup[celex] = items
 
     # Add decision nodes with metadata
     for _, row in decisions.iterrows():
@@ -199,6 +273,14 @@ def _build_graph(decisions, citations, case_names=None, subjects=None,
         if "advocate_general" in row and pd.notna(row["advocate_general"]):
             attrs["advocate_general"] = str(row["advocate_general"])
 
+        # Court code (from column or derived from CELEX)
+        if "court_code" in row and pd.notna(row["court_code"]):
+            attrs["court"] = str(row["court_code"])
+        elif isinstance(celex, str) and len(celex) >= 9:
+            cc = celex[7:9]
+            if cc in ("CJ", "TJ", "FJ"):
+                attrs["court"] = cc
+
         # Case name
         if celex in name_lookup:
             attrs["case_name"] = name_lookup[celex]["case_name"]
@@ -208,6 +290,20 @@ def _build_graph(decisions, citations, case_names=None, subjects=None,
         # Subjects
         if celex in subject_lookup:
             attrs["subjects"] = subject_lookup[celex]
+
+        # Extra metadata
+        if celex in joined_lookup:
+            attrs["joined_cases"] = joined_lookup[celex]
+        if celex in appeals_lookup:
+            attrs["appeals"] = appeals_lookup[celex]
+        if celex in interveners_lookup:
+            attrs["interveners"] = interveners_lookup[celex]
+        if celex in annulled_lookup:
+            attrs["annulled_acts"] = annulled_lookup[celex]
+        if celex in legislation_lookup:
+            attrs["legislation"] = legislation_lookup[celex]
+        if celex in academic_lookup:
+            attrs["academic_citations"] = academic_lookup[celex]
 
         G.add_node(celex, **attrs)
 
@@ -226,6 +322,11 @@ def _build_graph(decisions, citations, case_names=None, subjects=None,
                 attrs["case_name"] = name_lookup[cited]["case_name"]
                 if name_lookup[cited]["case_id"]:
                     attrs["case_id"] = name_lookup[cited]["case_id"]
+            # Derive court from CELEX for external nodes too
+            if isinstance(cited, str) and len(cited) >= 9:
+                cc = cited[7:9]
+                if cc in ("CJ", "TJ", "FJ"):
+                    attrs["court"] = cc
             G.add_node(cited, **attrs)
 
         if G.has_node(citing):
@@ -282,13 +383,18 @@ def _sanitise_for_gexf(G):
         to_remove = [k for k, v in attrs.items() if v is None]
         for k in to_remove:
             del attrs[k]
-        # Convert lists to semicolon-separated strings (GEXF doesn't support lists)
-        if "subjects" in attrs and isinstance(attrs["subjects"], list):
-            attrs["subjects"] = ";".join(attrs["subjects"])
-        # Normalise non-breaking hyphens (Gephi font compatibility)
+        # Convert lists/dicts to strings (GEXF doesn't support complex types)
         for k in list(attrs.keys()):
-            if isinstance(attrs[k], str):
-                attrs[k] = attrs[k].replace("\u2011", "-").replace("\u2010", "-")
+            v = attrs[k]
+            if isinstance(v, list):
+                if v and isinstance(v[0], dict):
+                    attrs[k] = json.dumps(v, ensure_ascii=False)
+                else:
+                    attrs[k] = ";".join(str(x) for x in v)
+            elif isinstance(v, dict):
+                attrs[k] = json.dumps(v, ensure_ascii=False)
+            elif isinstance(v, str):
+                attrs[k] = v.replace("\u2011", "-").replace("\u2010", "-")
     return G_clean
 
 
@@ -322,6 +428,18 @@ def _to_d3_json(G):
     if years:
         meta["yearMin"] = int(min(years))
         meta["yearMax"] = int(max(years))
+
+    # Detect available data tiers
+    sample_attrs = set()
+    for _, attrs in G.nodes(data=True):
+        sample_attrs.update(attrs.keys())
+
+    meta["dataTiers"] = {
+        "procedural": any(k in sample_attrs for k in
+                          ["joined_cases", "appeals", "interveners", "annulled_acts"]),
+        "legislation": "legislation" in sample_attrs,
+        "academic": "academic_citations" in sample_attrs,
+    }
 
     return {"meta": meta, "nodes": nodes, "links": links}
 
@@ -357,12 +475,19 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
             cursor: pointer; font-size: 24px; color: #fff;
         }
         #sidebar-header .close-btn:hover { color: #e74c3c; }
-        #sidebar-stats {
-            padding: 12px 15px; background: #ecf0f1;
-            font-size: 13px; border-bottom: 1px solid #bdc3c7;
+        #sidebar-content { padding: 0; }
+        #sidebar-content details {
+            border-bottom: 1px solid #ecf0f1;
         }
-        #sidebar-stats div { margin-bottom: 4px; }
-        #sidebar-citations { padding: 15px; }
+        #sidebar-content summary {
+            padding: 10px 15px; cursor: pointer; font-weight: bold;
+            font-size: 13px; background: #f8f9fa; user-select: none;
+        }
+        #sidebar-content summary:hover { background: #ecf0f1; }
+        #sidebar-content .detail-body {
+            padding: 8px 15px 12px 15px; font-size: 13px;
+        }
+        #sidebar-content .detail-body div { margin-bottom: 4px; }
         .cite-item {
             padding: 8px 10px; margin-bottom: 6px; border-radius: 4px;
             border-left: 3px solid #3498db; background: rgba(52,152,219,0.06);
@@ -374,6 +499,16 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
         .subject-chip {
             display: inline-block; padding: 2px 7px; margin: 2px 3px 2px 0;
             border-radius: 10px; font-size: 10px; background: #dfe6e9; color: #2d3436;
+        }
+        .leg-item {
+            padding: 4px 8px; margin-bottom: 4px; border-radius: 3px;
+            background: #f0f0f0; font-size: 12px;
+        }
+        .leg-item a { color: #2980b9; text-decoration: none; }
+        .leg-item .leg-type { color: #7f8c8d; font-size: 11px; }
+        .acad-item {
+            padding: 4px 8px; margin-bottom: 4px; border-radius: 3px;
+            background: #fef9e7; font-size: 12px;
         }
         svg { width: 100vw; height: 100vh; }
         .link { stroke-opacity: 0.25; }
@@ -401,6 +536,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
         .filter-list input[type="checkbox"] { margin-right: 6px; }
         .filter-controls { display: flex; gap: 5px; margin-bottom: 5px; }
         .filter-controls button { flex: 1; padding: 3px 8px; font-size: 11px; cursor: pointer; }
+        .hull { pointer-events: none; }
     </style>
 </head>
 <body>
@@ -415,8 +551,10 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
             <option value="out_degree">Out-Degree (citations made)</option>
             <option value="betweenness">Betweenness Centrality</option>
         </select>
-        <strong style="font-size:12px">Scale: <span id="node-scale-value">1.0</span>x</strong>
-        <input type="range" id="node-scale" min="0.2" max="3" step="0.1" value="1">
+        <strong style="font-size:12px">Min radius: <span id="min-size-value">3</span>px</strong>
+        <input type="range" id="min-size" min="1" max="15" step="1" value="3">
+        <strong style="font-size:12px">Max radius: <span id="max-size-value">30</span>px</strong>
+        <input type="range" id="max-size" min="10" max="80" step="1" value="30">
     </div>
 
     <div class="section">
@@ -425,7 +563,14 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
             <option value="community">Community (Louvain)</option>
             <option value="procedure">Procedure Type</option>
             <option value="year">Year</option>
+            <option value="court">Court (CJ / GC / CST)</option>
+            <option value="formation">Formation</option>
         </select>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Community Display:</div>
+        <label style="font-size:12px"><input type="checkbox" id="show-hulls"> Show community hulls</label>
     </div>
 
     <div class="section">
@@ -441,6 +586,15 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <input type="range" id="yr-from" min="1950" max="2025" step="1" value="1950">
         <input type="range" id="yr-to" min="1950" max="2025" step="1" value="2025">
+    </div>
+
+    <div class="section">
+        <div class="section-title">Filter by Court:</div>
+        <div class="filter-controls">
+            <button onclick="selectAll('court')">All</button>
+            <button onclick="selectNone('court')">None</button>
+        </div>
+        <div class="filter-list" id="court-filters"></div>
     </div>
 
     <div class="section">
@@ -474,8 +628,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
         <h3 id="sb-name">Case</h3>
         <div id="sb-celex" style="font-size:12px; opacity:0.8;"></div>
     </div>
-    <div id="sidebar-stats"></div>
-    <div id="sidebar-citations"></div>
+    <div id="sidebar-content"></div>
 </div>
 
 <div class="tooltip" id="tooltip"></div>
@@ -484,6 +637,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 const data = __DATA_PLACEHOLDER__;
 const EURLEX = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:";
 const SUBJ_LABELS = __SUBJECT_LABELS__;
+const dataTiers = (data.meta || {}).dataTiers || {};
 
 const allNodes = data.nodes;
 const allLinks = data.links;
@@ -501,6 +655,20 @@ yrFrom.min = yearMin; yrFrom.max = yearMax; yrFrom.value = yearMin;
 yrTo.min = yearMin; yrTo.max = yearMax; yrTo.value = yearMax;
 document.getElementById("yr-from-val").innerText = yearMin;
 document.getElementById("yr-to-val").innerText = yearMax;
+
+// Court filter
+const COURT_LABELS = {"CJ": "Court of Justice", "TJ": "General Court", "FJ": "Civil Service Tribunal"};
+const courtTypes = [...new Set(allNodes.map(n => n.court).filter(Boolean))].sort();
+const courtDiv = document.getElementById("court-filters");
+courtTypes.forEach(c => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = true; cb.dataset.court = c;
+    cb.addEventListener("change", update);
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode((COURT_LABELS[c] || c)));
+    courtDiv.appendChild(label);
+});
 
 // Subject matter filters (sorted by frequency)
 const subjCounts = {};
@@ -553,13 +721,17 @@ const COMM_COLORS = [
     "#a65628","#f781bf","#66c2a5","#fc8d62","#8da0cb",
     "#e78ac3","#a6d854","#ffd92f","#e5c494","#b3b3b3",
 ];
+const COURT_COLORS = {"CJ": "#e41a1c", "TJ": "#377eb8", "FJ": "#4daf4a"};
 const procColor = d3.scaleOrdinal(d3.schemeTableau10);
+const formationColor = d3.scaleOrdinal(d3.schemeCategory10);
 const yearColor = d3.scaleSequential(d3.interpolateViridis).domain([yearMin, yearMax]);
 
 function getColor(node) {
     const mode = document.getElementById("color-metric").value;
     if (mode === "procedure") return procColor(node.procedure || "unknown");
     if (mode === "year") return node.year ? yearColor(node.year) : "#ccc";
+    if (mode === "court") return COURT_COLORS[node.court] || "#ccc";
+    if (mode === "formation") return formationColor(node.formation || "unknown");
     return COMM_COLORS[(node.community || 0) % COMM_COLORS.length];
 }
 
@@ -573,9 +745,11 @@ const maxVals = {
 
 function getNodeSize(node) {
     const metric = document.getElementById("size-metric").value;
-    const scale = parseFloat(document.getElementById("node-scale").value);
+    const minR = parseFloat(document.getElementById("min-size").value);
+    const maxR = parseFloat(document.getElementById("max-size").value);
     const val = node[metric] || 0;
-    return (3 + Math.sqrt(val / maxVals[metric]) * 25) * scale;
+    const norm = Math.sqrt(val / maxVals[metric]);
+    return minR + norm * (Math.max(maxR, minR + 1) - minR);
 }
 
 function getEdgeWidth() {
@@ -597,6 +771,7 @@ svg.append("defs").append("marker")
     .attr("orient", "auto")
     .append("path").attr("d", "M0,0L10,3L0,6").attr("fill", "#999");
 
+const hullG = g.append("g").attr("class", "hulls");
 const linkG = g.append("g").attr("class", "links");
 const nodeG = g.append("g").attr("class", "nodes");
 
@@ -606,6 +781,35 @@ const simulation = d3.forceSimulation()
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", d3.forceCollide().radius(d => getNodeSize(d) + 2));
 
+// Community hulls
+function drawHulls(nodes) {
+    hullG.selectAll("path").remove();
+    if (!document.getElementById("show-hulls").checked) return;
+
+    const groups = {};
+    nodes.forEach(n => {
+        if (n.community !== undefined && n.x !== undefined) {
+            (groups[n.community] = groups[n.community] || []).push(n);
+        }
+    });
+
+    Object.entries(groups).forEach(([comm, members]) => {
+        if (members.length < 3) return;
+        const points = members.map(n => [n.x, n.y]);
+        const hull = d3.polygonHull(points);
+        if (!hull) return;
+
+        hullG.append("path")
+            .attr("class", "hull")
+            .attr("d", "M" + hull.join("L") + "Z")
+            .attr("fill", COMM_COLORS[comm % COMM_COLORS.length])
+            .attr("fill-opacity", 0.08)
+            .attr("stroke", COMM_COLORS[comm % COMM_COLORS.length])
+            .attr("stroke-opacity", 0.25)
+            .attr("stroke-width", 1.5);
+    });
+}
+
 // Sidebar
 function openSidebar(node) {
     const sb = document.getElementById("sidebar");
@@ -613,57 +817,118 @@ function openSidebar(node) {
     document.getElementById("sb-name").innerText = name.length > 80 ? name.slice(0,77)+"..." : name;
     document.getElementById("sb-celex").innerText = node.id + (node.case_id ? " (" + node.case_id + ")" : "");
 
-    // Subject chips
     const subjs = (node.subjects || []).map(s =>
         `<span class="subject-chip">${SUBJ_LABELS[s] || s}</span>`
     ).join("");
 
-    const statsDiv = document.getElementById("sidebar-stats");
-    statsDiv.innerHTML = `
-        <div><strong>CELEX:</strong> <a href="${EURLEX}${node.id}" target="_blank" style="color:#2980b9">${node.id}</a></div>
-        ${node.ecli ? `<div><strong>ECLI:</strong> ${node.ecli}</div>` : ""}
-        <div><strong>Date:</strong> ${node.date || "?"}</div>
-        ${node.resource_type ? `<div><strong>Type:</strong> ${RTYPE_LABELS[node.resource_type] || node.resource_type}</div>` : ""}
-        <div><strong>Formation:</strong> ${node.formation || "?"}</div>
-        <div><strong>Procedure:</strong> ${PROC_LABELS[node.procedure] || node.procedure || "?"}</div>
-        <div><strong>Judge-Rapporteur:</strong> ${node.judge_rapporteur || "?"}</div>
-        <div><strong>Advocate General:</strong> ${node.advocate_general || "?"}</div>
-        ${subjs ? `<div style="margin-top:6px"><strong>Subjects:</strong><br>${subjs}</div>` : ""}
-        <hr style="margin:8px 0;border-color:#ddd">
-        <div><strong>PageRank:</strong> ${(node.pagerank || 0).toFixed(6)}</div>
-        <div><strong>Betweenness:</strong> ${(node.betweenness || 0).toFixed(5)}</div>
-        <div><strong>In-Degree:</strong> ${node.in_degree || 0} (cited by this many cases)</div>
-        <div><strong>Out-Degree:</strong> ${node.out_degree || 0} (cites this many cases)</div>
-        <div><strong>Community:</strong> ${node.community !== undefined ? node.community : "?"}</div>
-    `;
+    const contentDiv = document.getElementById("sidebar-content");
+    let html = "";
+
+    // Basic metadata (always open)
+    html += `<details open>
+        <summary>Case Metadata</summary>
+        <div class="detail-body">
+            <div><strong>CELEX:</strong> <a href="${EURLEX}${node.id}" target="_blank" style="color:#2980b9">${node.id}</a></div>
+            ${node.ecli ? `<div><strong>ECLI:</strong> ${node.ecli}</div>` : ""}
+            <div><strong>Date:</strong> ${node.date || "?"}</div>
+            ${node.resource_type ? `<div><strong>Type:</strong> ${RTYPE_LABELS[node.resource_type] || node.resource_type}</div>` : ""}
+            ${node.court ? `<div><strong>Court:</strong> ${COURT_LABELS[node.court] || node.court}</div>` : ""}
+            <div><strong>Formation:</strong> ${node.formation || "?"}</div>
+            <div><strong>Procedure:</strong> ${PROC_LABELS[node.procedure] || node.procedure || "?"}</div>
+            <div><strong>Judge-Rapporteur:</strong> ${node.judge_rapporteur || "?"}</div>
+            <div><strong>Advocate General:</strong> ${node.advocate_general || "?"}</div>
+            ${subjs ? `<div style="margin-top:6px"><strong>Subjects:</strong><br>${subjs}</div>` : ""}
+        </div>
+    </details>`;
+
+    // Centrality
+    html += `<details open>
+        <summary>Centrality Metrics</summary>
+        <div class="detail-body">
+            <div><strong>PageRank:</strong> ${(node.pagerank || 0).toFixed(6)}</div>
+            <div><strong>Betweenness:</strong> ${(node.betweenness || 0).toFixed(5)}</div>
+            <div><strong>In-Degree:</strong> ${node.in_degree || 0} (cited by this many cases)</div>
+            <div><strong>Out-Degree:</strong> ${node.out_degree || 0} (cites this many cases)</div>
+            <div><strong>Community:</strong> ${node.community !== undefined ? node.community : "?"}</div>
+        </div>
+    </details>`;
+
+    // Procedural (if data available)
+    if (dataTiers.procedural) {
+        const procItems = [];
+        if (node.joined_cases && node.joined_cases.length)
+            procItems.push(`<div><strong>Joined cases:</strong> ${node.joined_cases.map(c => `<a href="${EURLEX}${c}" target="_blank">${c}</a>`).join(", ")}</div>`);
+        if (node.appeals && node.appeals.length)
+            procItems.push(`<div><strong>Appeals:</strong> ${node.appeals.map(c => `<a href="${EURLEX}${c}" target="_blank">${c}</a>`).join(", ")}</div>`);
+        if (node.interveners && node.interveners.length)
+            procItems.push(`<div><strong>Interveners:</strong> ${node.interveners.join("; ")}</div>`);
+        if (node.annulled_acts && node.annulled_acts.length)
+            procItems.push(`<div><strong>Annulled acts:</strong> ${node.annulled_acts.map(c => `<a href="${EURLEX}${c}" target="_blank">${c}</a>`).join(", ")}</div>`);
+        if (procItems.length) {
+            html += `<details>
+                <summary>Procedural Links (${procItems.length})</summary>
+                <div class="detail-body">${procItems.join("")}</div>
+            </details>`;
+        }
+    }
+
+    // Legislation links
+    if (dataTiers.legislation && node.legislation && node.legislation.length) {
+        let legHtml = node.legislation.slice(0, 30).map(l =>
+            `<div class="leg-item"><a href="${EURLEX}${l.celex}" target="_blank">${l.celex}</a> <span class="leg-type">${l.type || ""}</span></div>`
+        ).join("");
+        if (node.legislation.length > 30) legHtml += `<div style="font-size:11px;color:#999;padding:4px">... and ${node.legislation.length-30} more</div>`;
+        html += `<details>
+            <summary>Legislation Links (${node.legislation.length})</summary>
+            <div class="detail-body">${legHtml}</div>
+        </details>`;
+    }
+
+    // Academic citations
+    if (dataTiers.academic && node.academic_citations && node.academic_citations.length) {
+        let acadHtml = node.academic_citations.slice(0, 20).map(a => {
+            const parts = Object.values(a).join(" / ");
+            return `<div class="acad-item">${parts}</div>`;
+        }).join("");
+        if (node.academic_citations.length > 20) acadHtml += `<div style="font-size:11px;color:#999;padding:4px">... and ${node.academic_citations.length-20} more</div>`;
+        html += `<details>
+            <summary>Academic Citations (${node.academic_citations.length})</summary>
+            <div class="detail-body">${acadHtml}</div>
+        </details>`;
+    }
 
     // Citation lists
-    const citDiv = document.getElementById("sidebar-citations");
     const nodeMap = Object.fromEntries(allNodes.map(n => [n.id, n]));
-
     const citing = allLinks.filter(l => (l.target.id||l.target) === node.id)
         .map(l => nodeMap[l.source.id||l.source]).filter(Boolean)
         .sort((a,b) => (b.year||0)-(a.year||0));
-
     const cited = allLinks.filter(l => (l.source.id||l.source) === node.id)
         .map(l => nodeMap[l.target.id||l.target]).filter(Boolean)
         .sort((a,b) => (b.year||0)-(a.year||0));
 
-    let html = `<h4 style="margin:10px 0 8px 0">Cited by (${citing.length})</h4>`;
+    let citHtml = "";
     citing.slice(0,50).forEach(c => {
         const nm = c.case_name ? c.case_name.slice(0,60) : c.id;
-        html += `<div class="cite-item"><a href="${EURLEX}${c.id}" target="_blank">${nm}</a> <span style="color:#999;font-size:11px">${c.year||""}</span></div>`;
+        citHtml += `<div class="cite-item"><a href="${EURLEX}${c.id}" target="_blank">${nm}</a> <span style="color:#999;font-size:11px">${c.year||""}</span></div>`;
     });
-    if (citing.length > 50) html += `<div style="font-size:12px;color:#999;padding:8px">... and ${citing.length-50} more</div>`;
+    if (citing.length > 50) citHtml += `<div style="font-size:12px;color:#999;padding:8px">... and ${citing.length-50} more</div>`;
 
-    html += `<h4 style="margin:15px 0 8px 0">Cites (${cited.length})</h4>`;
+    citHtml += `<h4 style="margin:15px 0 8px 0">Cites (${cited.length})</h4>`;
     cited.slice(0,50).forEach(c => {
         const nm = c.case_name ? c.case_name.slice(0,60) : c.id;
-        html += `<div class="cite-item outgoing"><a href="${EURLEX}${c.id}" target="_blank">${nm}</a> <span style="color:#999;font-size:11px">${c.year||""}</span></div>`;
+        citHtml += `<div class="cite-item outgoing"><a href="${EURLEX}${c.id}" target="_blank">${nm}</a> <span style="color:#999;font-size:11px">${c.year||""}</span></div>`;
     });
-    if (cited.length > 50) html += `<div style="font-size:12px;color:#999;padding:8px">... and ${cited.length-50} more</div>`;
+    if (cited.length > 50) citHtml += `<div style="font-size:12px;color:#999;padding:8px">... and ${cited.length-50} more</div>`;
 
-    citDiv.innerHTML = html;
+    html += `<details open>
+        <summary>Cited by (${citing.length}) / Cites (${cited.length})</summary>
+        <div class="detail-body">
+            <h4 style="margin:0 0 8px 0">Cited by (${citing.length})</h4>
+            ${citHtml}
+        </div>
+    </details>`;
+
+    contentDiv.innerHTML = html;
     sb.classList.add("open");
 }
 
@@ -673,6 +938,9 @@ function closeSidebar() { document.getElementById("sidebar").classList.remove("o
 function filterData() {
     const yFrom = parseInt(yrFrom.value);
     const yTo = parseInt(yrTo.value);
+    const selCourt = new Set();
+    document.querySelectorAll("#court-filters input:checked").forEach(cb => selCourt.add(cb.dataset.court));
+    const allCourtChecked = selCourt.size === courtTypes.length;
     const selProc = new Set();
     document.querySelectorAll("#proc-filters input:checked").forEach(cb => selProc.add(cb.dataset.proc));
     const selSubj = new Set();
@@ -681,8 +949,8 @@ function filterData() {
 
     let nodes = allNodes.filter(n => {
         if (n.year && (n.year < yFrom || n.year > yTo)) return false;
+        if (!allCourtChecked && n.court && !selCourt.has(n.court)) return false;
         if (n.procedure && selProc.size > 0 && !selProc.has(n.procedure)) return false;
-        // Subject filter: node must have at least one selected subject (or no subjects = pass)
         if (!allSubjChecked && n.subjects && n.subjects.length > 0) {
             if (!n.subjects.some(s => selSubj.has(s))) return false;
         }
@@ -732,6 +1000,7 @@ function update() {
         link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
             .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
         node.attr("transform",d=>`translate(${d.x},${d.y})`);
+        drawHulls(nodes);
     });
 }
 
@@ -742,15 +1011,21 @@ yrTo.addEventListener("input", e => { document.getElementById("yr-to-val").inner
 document.getElementById("size-metric").addEventListener("change", () => updateSizes());
 document.getElementById("color-metric").addEventListener("change", () => {
     nodeG.selectAll(".node circle").attr("fill", d => getColor(d));
+    drawHulls(simulation.nodes());
 });
-document.getElementById("node-scale").addEventListener("input", e => {
-    document.getElementById("node-scale-value").innerText = parseFloat(e.target.value).toFixed(1);
+document.getElementById("min-size").addEventListener("input", e => {
+    document.getElementById("min-size-value").innerText = e.target.value;
+    updateSizes();
+});
+document.getElementById("max-size").addEventListener("input", e => {
+    document.getElementById("max-size-value").innerText = e.target.value;
     updateSizes();
 });
 document.getElementById("edge-scale").addEventListener("input", e => {
     document.getElementById("edge-scale-value").innerText = parseFloat(e.target.value).toFixed(1);
     linkG.selectAll(".link").attr("stroke-width", getEdgeWidth());
 });
+document.getElementById("show-hulls").addEventListener("change", () => drawHulls(simulation.nodes()));
 
 function updateSizes() { nodeG.selectAll(".node circle").attr("r", d => getNodeSize(d)); }
 function ds(e,d) { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }
@@ -779,6 +1054,7 @@ def export_network(
     fmt: str = "gexf",
     topic: Optional[str] = None,
     formation: Optional[str] = None,
+    court: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     include_legislation: bool = False,
@@ -792,6 +1068,7 @@ def export_network(
         fmt: Output format ('gexf', 'd3', or 'html')
         topic: Subject matter filter (substring match)
         formation: Court formation filter (e.g. 'GRAND_CH')
+        court: Court filter (CJ, TJ, FJ)
         date_from: Earliest decision date (YYYY-MM-DD)
         date_to: Latest decision date (YYYY-MM-DD)
         include_legislation: Include citations to legislation/treaties
@@ -800,15 +1077,15 @@ def export_network(
     Returns:
         Path to the exported file
     """
-    decisions, citations, subjects, case_names = _load_pipeline_data(data_dir)
+    decisions, citations, subjects, case_names, extra = _load_pipeline_data(data_dir)
     logger.info(f"Loaded {len(decisions)} decisions, {len(citations)} citation pairs")
 
     # Apply filters
-    has_filters = any([topic, formation, date_from, date_to])
+    has_filters = any([topic, formation, court, date_from, date_to])
     if has_filters:
         decisions, citations = _filter_decisions(
             decisions, citations, subjects,
-            topic=topic, formation=formation,
+            topic=topic, formation=formation, court=court,
             date_from=date_from, date_to=date_to,
         )
         logger.info(f"After filters: {len(decisions)} decisions, {len(citations)} citations")
@@ -820,7 +1097,7 @@ def export_network(
     # Build graph
     case_law_only = not include_legislation
     G = _build_graph(decisions, citations, case_names, subjects,
-                     case_law_only=case_law_only)
+                     extra=extra, case_law_only=case_law_only)
     logger.info(f"Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
     # Compute centrality
@@ -867,6 +1144,6 @@ def export_network(
 
     size_kb = os.path.getsize(output_path) / 1024
     logger.info(f"Exported {fmt.upper()}: {n_nodes:,} nodes, {n_edges:,} edges "
-                f"({size_kb:.0f} KB) → {output_path}")
+                f"({size_kb:.0f} KB) -> {output_path}")
 
     return output_path
