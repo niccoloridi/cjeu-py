@@ -7,6 +7,7 @@ Usage:
 Commands:
     download-cellar      Fetch CJEU case-law metadata from CELLAR SPARQL
     download-cellar-meta Fetch extended metadata (joins, appeals, legislation links, etc.)
+    enrich-network       Fetch metadata for external cited cases from CELLAR
     fetch-texts          Download full judgment texts from EUR-Lex
     extract-citations    Extract citations from judgment texts
     parse-headers        Parse judgment XHTML headers (composition, parties, representatives)
@@ -536,9 +537,63 @@ def cmd_export_network(args):
         date_to=args.date_to,
         include_legislation=args.include_legislation,
         max_nodes=args.max_nodes,
+        internal_only=getattr(args, "internal_only", False),
     )
     if path:
         logger.info(f"Network exported to {path}")
+
+
+def cmd_enrich_network(args):
+    """Fetch metadata for external cited cases from CELLAR.
+
+    External nodes are cases cited by decisions in your downloaded set
+    but not part of the set themselves. This command fetches their basic
+    metadata (ECLI, date, court, formation) so export-network can display it.
+    """
+    import pandas as pd
+    from cjeu_py.data_collection.cellar_client import CellarClient
+    from cjeu_py import config
+
+    data_dir = args.data_dir or config.DATA_ROOT
+    cellar_dir = os.path.join(data_dir, "raw", "cellar")
+
+    dec_path = os.path.join(cellar_dir, "gc_decisions.parquet")
+    cit_path = os.path.join(cellar_dir, "gc_citations.parquet")
+    out_path = os.path.join(cellar_dir, "cited_metadata.parquet")
+
+    if not os.path.exists(dec_path) or not os.path.exists(cit_path):
+        logger.error("No decisions/citations data. Run download-cellar first.")
+        return
+
+    # Check cache
+    if not args.force and os.path.exists(out_path):
+        existing = pd.read_parquet(out_path)
+        logger.info(f"Cached: {len(existing)} cited metadata rows ({out_path})")
+        logger.info("Use --force to re-download from CELLAR.")
+        return
+
+    decisions = pd.read_parquet(dec_path)
+    citations = pd.read_parquet(cit_path)
+
+    decision_celex = set(decisions["celex"])
+    cited_celex = set(citations["cited_celex"])
+    external = cited_celex - decision_celex
+
+    # Filter to case-law only (sector 6)
+    external = sorted(c for c in external
+                      if isinstance(c, str) and c.startswith("6"))
+
+    logger.info(f"Found {len(external)} external cited cases to enrich")
+
+    if not external:
+        logger.info("No external cases to enrich.")
+        return
+
+    client = CellarClient()
+    df = client.fetch_cited_metadata(external)
+    client.save_cited_metadata(df, output_dir=cellar_dir)
+    logger.info(f"Enriched metadata for {len(df)} external cases. "
+                f"Re-run export-network to use.")
 
 
 def cmd_search(args):
@@ -694,6 +749,16 @@ def build_parser():
     p.add_argument("--max-nodes", type=int, default=None,
                    help="Limit node count (keeps top N by PageRank). "
                         "Recommended for D3.js: 3000, Gephi Lite: 5000")
+    p.add_argument("--internal-only", action="store_true",
+                   help="Only include decisions in your downloaded set "
+                        "(no external cited nodes). All nodes will have full metadata.")
+
+    # enrich-network
+    p = subparsers.add_parser("enrich-network",
+                              help="Fetch metadata for external cited cases from CELLAR")
+    p.add_argument("--data-dir", type=str, default=None, help="Data directory")
+    p.add_argument("--force", action="store_true",
+                   help="Re-download from CELLAR even if cached data exists")
 
     # codebook
     p = subparsers.add_parser("codebook", help="Generate variable codebook (Markdown)")
@@ -752,6 +817,7 @@ def main():
         "extract-judge-bios": cmd_extract_judge_bios,
         "export": cmd_export,
         "export-network": cmd_export_network,
+        "enrich-network": cmd_enrich_network,
         "codebook": cmd_codebook,
         "search": cmd_search,
         "analyze": cmd_analyze,

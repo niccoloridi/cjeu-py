@@ -19,7 +19,7 @@ import time
 import logging
 import pandas as pd
 from typing import List, Dict, Optional
-from SPARQLWrapper import SPARQLWrapper, JSON
+from SPARQLWrapper import SPARQLWrapper, JSON, POST
 
 from cjeu_py import config
 
@@ -36,6 +36,7 @@ class CellarClient:
         self.rate_limit = rate_limit or config.CELLAR_RATE_LIMIT
         self.sparql = SPARQLWrapper(self.endpoint)
         self.sparql.setReturnFormat(JSON)
+        self.sparql.setMethod(POST)
         self._last_request_time = 0
 
     def _throttle(self):
@@ -198,6 +199,76 @@ LIMIT {limit}
         
         logger.info(f"Fetched {len(df)} unique decisions from CELLAR")
         return df
+
+    def fetch_cited_metadata(
+        self,
+        celex_list: List[str],
+        batch_size: int = 500,
+    ) -> pd.DataFrame:
+        """Fetch basic metadata for external cited cases.
+
+        Queries CELLAR for ECLI, date, court, formation, and resource type
+        for a list of CELEX numbers. Used by enrich-network to fill in
+        metadata for cases cited by the downloaded decision set.
+
+        Args:
+            celex_list: CELEX numbers to look up
+            batch_size: Max CELEX values per SPARQL query (VALUES clause limit)
+
+        Returns:
+            DataFrame with columns: celex, ecli, date, court_code,
+            resource_type, formation_code
+        """
+        all_rows = []
+
+        for i in range(0, len(celex_list), batch_size):
+            batch = celex_list[i:i + batch_size]
+            values = " ".join(f'"{c}"^^xsd:string' for c in batch)
+
+            query = f"""
+PREFIX cdm: <{CDM}>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+SELECT DISTINCT ?celex ?ecli ?date ?court_code ?resource_type ?formation_code
+WHERE {{
+    VALUES ?celex {{ {values} }}
+    ?work cdm:resource_legal_id_celex ?celex .
+    OPTIONAL {{ ?work cdm:work_date_document ?date }}
+    OPTIONAL {{ ?work cdm:case-law_ecli ?ecli }}
+    OPTIONAL {{ ?work cdm:resource_legal_type ?court_code }}
+    OPTIONAL {{ ?work cdm:work_has_resource-type ?restype .
+               BIND(REPLACE(STR(?restype), "^.*resource-type/", "") AS ?resource_type) }}
+    OPTIONAL {{ ?work cdm:case-law_delivered_by_court-formation ?form .
+               BIND(REPLACE(STR(?form), "^.*formjug/", "") AS ?formation_code) }}
+}}
+"""
+            logger.info(f"Fetching cited metadata: batch {i // batch_size + 1} "
+                        f"({len(batch)} cases)")
+            rows = self._query(query)
+            all_rows.extend(rows)
+
+            if rows:
+                logger.info(f"  → Got {len(rows)} rows")
+
+        if not all_rows:
+            return pd.DataFrame(columns=["celex", "ecli", "date",
+                                          "court_code", "resource_type",
+                                          "formation_code"])
+
+        df = pd.DataFrame(all_rows)
+        if "celex" in df.columns:
+            df = df.drop_duplicates(subset=["celex"], keep="first")
+
+        logger.info(f"Fetched metadata for {len(df)} cited cases")
+        return df
+
+    def save_cited_metadata(self, df: pd.DataFrame, output_dir: str = None):
+        """Save cited metadata to Parquet."""
+        output_dir = output_dir or config.RAW_CELLAR_DIR
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, "cited_metadata.parquet")
+        df.to_parquet(path, index=False)
+        logger.info(f"Saved metadata for {len(df)} cited cases to {path}")
+        return path
 
     # ── Case names ─────────────────────────────────────────────────────────
 

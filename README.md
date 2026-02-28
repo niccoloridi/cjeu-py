@@ -32,7 +32,7 @@ The goal is a toolkit that fits naturally into the workflows that computational 
 - **GEXF** – for Gephi desktop and [Gephi Lite](https://gephi.org/gephi-lite/), with all node attributes (centrality, subjects, formation, procedure) preserved as typed attributes
 - **D3 JSON** – for custom web visualisations or programmatic analysis
 
-Each node carries PageRank, betweenness centrality, in-degree, out-degree, and a Louvain community assignment. The graph includes external cited cases (older authorities outside the filtered set) to preserve full citation neighbourhoods.
+Each node carries PageRank, betweenness centrality, in-degree, out-degree, and a Louvain community assignment. The graph includes **external cited cases** (authorities cited by your downloaded decisions but not part of the downloaded set) to preserve full citation neighbourhoods. External nodes have year and court derived from the CELEX number; run `enrich-network` (below) to add full metadata.
 
 The HTML export provides:
 
@@ -40,10 +40,24 @@ The HTML export provides:
 - **Filters** – year range slider, court checkboxes (CJ/GC/CST), subject matter checkboxes (36 case-law subject codes with human-readable labels, sorted by frequency), procedure type checkboxes, with All/None toggles
 - **Detail sidebar** – click any node to see collapsible sections: case metadata (CELEX, ECLI, date, court, formation, procedure, judge-rapporteur, AG, subjects), centrality metrics, procedural links (joined cases, appeals, interveners, annulled acts), legislation links, academic citations, and citing/cited-by lists. Available sections depend on which metadata tiers have been downloaded
 
-A pre-built example is available at [`examples/grand_chamber_network.html`](examples/grand_chamber_network.html) — download and open in a browser. It contains the 500 most central Grand Chamber cases (by PageRank) plus cases they cite
+A pre-built example is available at [`examples/grand_chamber_network.html`](examples/grand_chamber_network.html) — download and open in a browser. It contains the 500 most central Grand Chamber cases (by PageRank) plus cases they cite.
+
+**Handling external nodes:** By default, nodes outside your downloaded set appear with limited metadata. Two options:
 
 ```bash
-# Full Grand Chamber network as interactive HTML
+# Option 1: Enrich external nodes by fetching their metadata from CELLAR
+# (one-time, cached — fetches ECLI, date, court, formation)
+cjeu-py enrich-network
+
+# Then export as usual — external nodes now have full metadata
+cjeu-py export-network --format html --max-nodes 500
+
+# Option 2: Restrict to downloaded decisions only (no external nodes)
+cjeu-py export-network --format html --internal-only
+```
+
+```bash
+# Full network as interactive HTML
 cjeu-py export-network --format html
 
 # Cap at 500 most central cases (PageRank) for fast rendering

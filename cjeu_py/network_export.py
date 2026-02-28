@@ -115,6 +115,12 @@ def _load_pipeline_data(data_dir: str):
             extra[key] = pd.read_parquet(path)
             logger.info(f"  Loaded {key}: {len(extra[key])} rows")
 
+    # Enriched metadata for external cited nodes (from enrich-network)
+    cited_meta_path = os.path.join(cellar_dir, "cited_metadata.parquet")
+    if os.path.exists(cited_meta_path):
+        extra["cited_metadata"] = pd.read_parquet(cited_meta_path)
+        logger.info(f"  Loaded cited_metadata: {len(extra['cited_metadata'])} rows")
+
     return decisions, citations, subjects, case_names, extra
 
 
@@ -167,7 +173,7 @@ def _filter_decisions(decisions, citations, subjects=None,
 
 
 def _build_graph(decisions, citations, case_names=None, subjects=None,
-                  extra=None, case_law_only=True):
+                  extra=None, case_law_only=True, internal_only=False):
     """Build a directed citation graph with node attributes."""
     G = nx.DiGraph()
     decision_set = set(decisions["celex"].tolist())
@@ -307,12 +313,25 @@ def _build_graph(decisions, citations, case_names=None, subjects=None,
 
         G.add_node(celex, **attrs)
 
+    # Cited metadata lookup (from enrich-network command)
+    cited_meta_lookup = {}
+    if "cited_metadata" in extra:
+        cm = extra["cited_metadata"]
+        for _, row_cm in cm.iterrows():
+            celex_cm = row_cm.get("celex")
+            if celex_cm and pd.notna(celex_cm):
+                cited_meta_lookup[celex_cm] = row_cm
+
     # Add citation edges
     for _, row in citations.iterrows():
         citing = row["citing_celex"]
         cited = row["cited_celex"]
 
         if case_law_only and not (isinstance(cited, str) and cited.startswith("6")):
+            continue
+
+        # In internal-only mode, skip edges to cases outside the decision set
+        if internal_only and cited not in decision_set:
             continue
 
         # Add cited node if external
@@ -322,11 +341,31 @@ def _build_graph(decisions, citations, case_names=None, subjects=None,
                 attrs["case_name"] = name_lookup[cited]["case_name"]
                 if name_lookup[cited]["case_id"]:
                     attrs["case_id"] = name_lookup[cited]["case_id"]
-            # Derive court from CELEX for external nodes too
+            # Derive court and year from CELEX
             if isinstance(cited, str) and len(cited) >= 9:
                 cc = cited[7:9]
                 if cc in ("CJ", "TJ", "FJ"):
                     attrs["court"] = cc
+                try:
+                    attrs["year"] = int(cited[1:5])
+                except (ValueError, IndexError):
+                    pass
+            # Enrich from cited_metadata if available
+            if cited in cited_meta_lookup:
+                cm_row = cited_meta_lookup[cited]
+                for col, attr in [("ecli", "ecli"), ("date", "date"),
+                                  ("court_code", "court"),
+                                  ("resource_type", "resource_type"),
+                                  ("formation_code", "formation")]:
+                    val = cm_row.get(col)
+                    if val is not None and pd.notna(val):
+                        attrs[attr] = str(val)
+                # Parse date for year if enriched date is available
+                if "date" in attrs and attrs["date"]:
+                    try:
+                        attrs["year"] = pd.Timestamp(attrs["date"]).year
+                    except Exception:
+                        pass
             G.add_node(cited, **attrs)
 
         if G.has_node(citing):
@@ -1059,6 +1098,7 @@ def export_network(
     date_to: Optional[str] = None,
     include_legislation: bool = False,
     max_nodes: Optional[int] = None,
+    internal_only: bool = False,
 ) -> str:
     """Build and export the citation network.
 
@@ -1073,6 +1113,7 @@ def export_network(
         date_to: Latest decision date (YYYY-MM-DD)
         include_legislation: Include citations to legislation/treaties
         max_nodes: Limit node count (takes top N by PageRank)
+        internal_only: Only include nodes from the downloaded decision set
 
     Returns:
         Path to the exported file
@@ -1097,7 +1138,8 @@ def export_network(
     # Build graph
     case_law_only = not include_legislation
     G = _build_graph(decisions, citations, case_names, subjects,
-                     extra=extra, case_law_only=case_law_only)
+                     extra=extra, case_law_only=case_law_only,
+                     internal_only=internal_only)
     logger.info(f"Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
     # Compute centrality
