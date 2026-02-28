@@ -532,6 +532,27 @@ def cmd_export_network(args):
         logger.info(f"Network exported to {path}")
 
 
+def cmd_search(args):
+    """Search collected case-law data."""
+    from cjeu_py.search import run_search
+    from cjeu_py import config
+
+    data_dir = getattr(args, "data_dir", None) or config.DATA_ROOT
+
+    output = run_search(
+        data_dir=data_dir,
+        mode=args.mode,
+        query=args.query or "",
+        limit=args.limit,
+        fmt=args.format,
+        date_from=args.date_from,
+        date_to=args.date_to,
+        court=args.court,
+        verbose=args.verbose,
+    )
+    print(output)
+
+
 def cmd_analyze(args):
     """Run analysis scripts (stub)."""
     logger.info("Analysis module not yet implemented.")
@@ -654,6 +675,32 @@ def build_parser():
     p = subparsers.add_parser("codebook", help="Generate variable codebook (Markdown)")
     p.add_argument("--output", type=str, default=None, help="Output file path")
 
+    # search
+    p = subparsers.add_parser("search", help="Search collected case-law data")
+    p.add_argument("mode", type=str,
+                   choices=["text", "headnote", "party", "citing", "cited-by",
+                            "topic", "legislation", "list"],
+                   help="Search mode (headnote queries CELLAR live, "
+                        "all others search local data)")
+    p.add_argument("query", type=str, nargs="?", default="",
+                   help="Search query (text/headnote/party/topic: substring, "
+                        "citing/cited-by: CELEX, legislation: CELEX, "
+                        "list: topics/judges/ags/formations/procedures)")
+    p.add_argument("--limit", type=int, default=25, help="Max results (default: 25)")
+    p.add_argument("--format", type=str, default="table",
+                   choices=["table", "csv", "json"],
+                   help="Output format (default: table)")
+    p.add_argument("--date-from", type=str, default=None,
+                   help="Earliest decision date (YYYY-MM-DD)")
+    p.add_argument("--date-to", type=str, default=None,
+                   help="Latest decision date (YYYY-MM-DD)")
+    p.add_argument("--court", type=str, default=None,
+                   help="Court filter: CJ, TJ, FJ")
+    p.add_argument("--data-dir", type=str, default=None,
+                   help="Data directory override")
+    p.add_argument("--verbose", action="store_true",
+                   help="Show full text snippets (text mode)")
+
     # analyze
     subparsers.add_parser("analyze", help="Run analysis scripts")
 
@@ -682,6 +729,7 @@ def main():
         "export": cmd_export,
         "export-network": cmd_export_network,
         "codebook": cmd_codebook,
+        "search": cmd_search,
         "analyze": cmd_analyze,
     }
     

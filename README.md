@@ -20,6 +20,7 @@ The goal is a toolkit that fits naturally into the workflows that computational 
 | **Classify** *(optional)* | Precision, use, treatment, topic of each citation | Gemini structured JSON output (requires API key) |
 | **Validate** *(optional)* | Classification quality | Stratified sample export for human coding |
 | **Scrape** *(optional)* | Judge biographical data (all current and former members) | Curia.europa.eu + LLM structured extraction (requires API key) |
+| **Search** | Full-text, party, citation graph, topic, legislation, and live CELLAR headnote queries | `cjeu-py search text "proportionality"` |
 | **Network** | Interactive citation network with centrality metrics, community detection, subject/procedure/year filters | Self-contained HTML (D3.js), GEXF (Gephi / Gephi Lite), D3 JSON |
 | **Export** | All tables as CSV or Excel | `cjeu-py export --format csv` |
 
@@ -131,6 +132,44 @@ cjeu-py codebook
 
 All variable definitions are documented in [`CODEBOOK.md`](CODEBOOK.md).
 
+## Search
+
+Query collected data or the live CELLAR endpoint directly from the command line.
+
+**Local searches** (`text`, `party`, `citing`, `cited-by`, `topic`, `legislation`, `list`) query data you have already downloaded. **Remote searches** (`headnote`) query the CELLAR SPARQL endpoint live and require no local data.
+
+```bash
+# Full-text search across downloaded judgment paragraphs
+cjeu-py search text "autonomous legal order"
+cjeu-py search text "proportionality" --limit 50
+
+# Search by party name
+cjeu-py search party "Google"
+cjeu-py search party "Commission v Germany" --date-from 2015-01-01
+
+# Citation graph queries
+cjeu-py search citing 62014CJ0362      # cases citing Schrems I
+cjeu-py search cited-by 62014CJ0362    # cases cited by Schrems I
+
+# Search by subject matter (code or label)
+cjeu-py search topic "State aid"
+cjeu-py search topic PDON
+
+# Cases linked to a piece of legislation
+cjeu-py search legislation 32016R0679
+
+# Live CELLAR headnote/title search (no local data needed)
+cjeu-py search headnote "data protection"
+cjeu-py search headnote "state aid"
+
+# List available values
+cjeu-py search list topics
+cjeu-py search list judges
+cjeu-py search list formations
+```
+
+All search modes support `--format csv` and `--format json` for piping into other tools. Local searches also accept `--date-from`, `--date-to`, and `--court` filters.
+
 ## Data sources
 
 ### CELLAR SPARQL
@@ -228,10 +267,11 @@ The taxonomy draws on Marc Jacob's *Precedents and Case-Based Reasoning in the E
 ```
 cjeu-py/
 ├── cjeu_py/                           # Core library (pip-installable)
-│   ├── main.py                        # CLI entry point (14 commands)
+│   ├── main.py                        # CLI entry point (15 commands)
 │   ├── config.py                      # Central configuration
 │   ├── data_collection/               # CELLAR SPARQL + REST clients, header parser, Curia scraper
 │   ├── citation_extraction/           # Regex patterns, context windows, party name matching
+│   ├── search.py                      # CLI search (8 modes: text, headnote, party, citing, etc.)
 │   ├── classification/                # LLM pipeline with checkpointing & cost tracking
 │   ├── llm/                           # Gemini API wrapper
 │   └── utils/                         # XHTML parsing, logging utilities
