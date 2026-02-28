@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="cjeu-py" width="400">
+  <img src="https://raw.githubusercontent.com/niccoloridi/cjeu-py/main/docs/logo.svg" alt="cjeu-py" width="400">
 </p>
 
 <p align="center">
@@ -52,7 +52,7 @@ The HTML export provides:
 - **Detail sidebar** – click any node to see collapsible sections: case metadata (CELEX, ECLI, date, court, formation, procedure, judge-rapporteur, AG, subjects), centrality metrics, procedural links (joined cases, appeals, interveners, annulled acts), legislation links, academic citations, and citing/cited-by lists. Available sections depend on which metadata tiers have been downloaded
 
 <p align="center">
-  <img src="docs/network_screenshot.png" alt="Interactive citation network" width="800">
+  <img src="https://raw.githubusercontent.com/niccoloridi/cjeu-py/main/docs/network_screenshot.png" alt="Interactive citation network" width="800">
 </p>
 
 A pre-built example is available at [`examples/grand_chamber_network.html`](examples/grand_chamber_network.html) — download and open in a browser. It contains the 500 most central Grand Chamber cases (by PageRank) plus cases they cite.
