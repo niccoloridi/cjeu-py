@@ -459,11 +459,13 @@ def search_headnote(query: str, limit: int = 25,
     (expression_case-law_indicator_decision) or title contains the
     search term. Covers the entire CJEU corpus.
     """
-    from SPARQLWrapper import SPARQLWrapper, JSON
+    from SPARQLWrapper import SPARQLWrapper, JSON, POST
 
     sparql = SPARQLWrapper(
         "https://publications.europa.eu/webapi/rdf/sparql")
     sparql.setReturnFormat(JSON)
+    sparql.setMethod(POST)
+    sparql.setTimeout(60)  # 60-second timeout for live queries
 
     query_escaped = query.lower().replace('"', '\\"')
 

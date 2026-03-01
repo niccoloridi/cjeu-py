@@ -39,6 +39,8 @@ PARQUET_TABLES = {
     "incorporates": "raw/cellar/gc_incorporates.parquet",
     # CELLAR SPARQL outputs — kitchen_sink tier
     "admin_metadata": "raw/cellar/gc_admin_metadata.parquet",
+    # Taxonomy
+    "subject_taxonomy": "raw/cellar/subject_taxonomy.parquet",
     # Header parser outputs (default location)
     "assignments": "assignments.parquet",
     "case_names": "case_names.parquet",

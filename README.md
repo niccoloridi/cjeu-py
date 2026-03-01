@@ -34,6 +34,7 @@ The goal is a toolkit that fits naturally into the workflows that computational 
 | **Search** | Full-text, party, citation graph, topic, legislation, and live CELLAR headnote queries | `cjeu-py search text "proportionality"` |
 | **Network** | Interactive citation network with centrality metrics, community detection, subject/procedure/year filters | Self-contained HTML (D3.js), GEXF (Gephi / Gephi Lite), D3 JSON |
 | **Export** | All tables as CSV or Excel | `cjeu-py export --format csv` |
+| **GUI** | Browser-based interface for all of the above (download, browse, search, network export) | Streamlit (`pip install streamlit`) |
 
 ## Interactive citation network
 
@@ -87,6 +88,26 @@ cjeu-py export-network --format gexf --formation GRAND_CH
 
 Networks above 5,000 nodes trigger a performance warning; above 10,000 a stronger warning suggests using `--max-nodes` or filters. Gephi desktop handles large networks without issue.
 
+## Streamlit GUI
+
+A browser-based GUI wraps the entire CLI, so everything is accessible without a terminal. Install Streamlit (`pip install streamlit`) and launch:
+
+```bash
+streamlit run gui/app.py
+```
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/niccoloridi/cjeu-py/main/docs/gui_screenshot.png" alt="cjeu-py Streamlit GUI" width="800">
+</p>
+
+The GUI provides five tabs:
+
+- **Download** — base and extended metadata from CELLAR, with filters for court, date range, formation, judge-rapporteur, AG, and document types (judgments, orders, AG opinions, and more). Also: network enrichment and text download.
+- **Browse Data** — select any Parquet table, preview it as a dataframe, view descriptive statistics, search judgment texts by CELEX, and download individual tables or all tables as a zip archive (CSV or Excel).
+- **Search** — all 8 search modes (text, headnote, party, citing, cited-by, topic, legislation, list) with result tables and CSV export.
+- **Ontology & Headnotes** — download the CELLAR subject-matter taxonomy, browse/filter it, and search case headnotes live via SPARQL.
+- **Network** — filter and export citation networks as GEXF or interactive HTML, with an embedded preview.
+
 ## Quick start
 
 ```bash
@@ -105,6 +126,9 @@ cjeu-py download-cellar --max-items 100
 # Filter by court, formation, judge, date range
 cjeu-py download-cellar --court CJ --formation GRAND_CH --date-from 2020-01-01
 cjeu-py download-cellar --judge Lenaerts --date-from 2015-01-01 --date-to 2020-12-31
+
+# Download judgments + orders + AG opinions (default: judgments only)
+cjeu-py download-cellar --doc-types CJ,TJ,FJ,CO,TO,FO,CC,TC
 
 # Re-download even if local data exists
 cjeu-py download-cellar --force
@@ -189,6 +213,8 @@ The base install (`pip install cjeu-py`) includes everything needed for data col
 | `analysis` | scipy, scikit-learn, statsmodels | `pip install 'cjeu-py[analysis]'` |
 | `viz` | matplotlib, seaborn | `pip install 'cjeu-py[viz]'` |
 | `all` | Everything above | `pip install 'cjeu-py[all]'` |
+
+The Streamlit GUI requires `pip install streamlit` (not included in any extras group — install it separately if you want the browser interface).
 
 ## Local model support
 
@@ -357,7 +383,9 @@ cjeu-py/
 │   ├── llm/                           # Gemini + OpenAI-compatible API wrapper
 │   └── utils/                         # XHTML parsing, logging utilities
 │
+├── gui/                               # Streamlit browser GUI (single-file app)
 ├── examples/                          # Pre-built example outputs
+├── docs/                              # Logo, screenshots
 ├── data/                              # Pipeline output (Parquet, JSONL, cached XHTML)
 ├── tests/                             # 93 tests
 ├── CODEBOOK.md                        # Variable definitions for all tables

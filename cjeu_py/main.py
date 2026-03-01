@@ -44,6 +44,11 @@ def cmd_download_cellar(args):
     client = CellarClient()
     force = args.force
 
+    # Parse --doc-types into a list, if provided
+    doc_types = None
+    if getattr(args, "doc_types", None):
+        doc_types = [c.strip().upper() for c in args.doc_types.split(",")]
+
     # ── Decisions ──────────────────────────────────────────────────────
     dec_path = os.path.join(config.RAW_CELLAR_DIR, "gc_decisions.parquet")
     if not force and os.path.exists(dec_path):
@@ -60,6 +65,7 @@ def cmd_download_cellar(args):
             date_from=args.date_from,
             date_to=args.date_to,
             max_items=args.max_items,
+            doc_types=doc_types,
         )
         client.save_decisions(decisions)
         logger.info(f"Downloaded {len(decisions)} decisions")
@@ -75,6 +81,7 @@ def cmd_download_cellar(args):
             citations = client.fetch_citations(
                 celex_list=celex_list if args.max_items else None,
                 max_items=args.max_items * 10 if args.max_items else None,
+                doc_types=doc_types,
             )
             client.save_citations(citations)
             logger.info(f"Downloaded {len(citations)} citation pairs")
@@ -260,6 +267,11 @@ def cmd_download_cellar_meta(args):
     max_items = args.max_items
     force = args.force
 
+    # Parse --doc-types into a list, if provided
+    doc_types = None
+    if getattr(args, "doc_types", None):
+        doc_types = [c.strip().upper() for c in args.doc_types.split(",")]
+
     # Optionally filter to CELEX list from decisions parquet
     celex_list = None
     dec_path = os.path.join(config.RAW_CELLAR_DIR, "gc_decisions.parquet")
@@ -290,7 +302,7 @@ def cmd_download_cellar_meta(args):
             logger.info(f"Cached: {name} ({path})")
             continue
         logger.info(f"Downloading {name}...")
-        df = fetch_fn(celex_list=celex_list, max_items=max_items)
+        df = fetch_fn(celex_list=celex_list, max_items=max_items, doc_types=doc_types)
         save_fn(df)
         logger.info(f"Downloaded {len(df)} {name}")
 
@@ -300,7 +312,8 @@ def cmd_download_cellar_meta(args):
         logger.info(f"Cached: AG opinions ({ag_path})")
     else:
         logger.info("Downloading AG opinion links...")
-        ag = client.fetch_ag_opinions(celex_list=celex_list, max_items=max_items)
+        ag = client.fetch_ag_opinions(celex_list=celex_list, max_items=max_items,
+                                      doc_types=doc_types)
         client.save_ag_opinions(ag)
         logger.info(f"Downloaded {len(ag)} AG opinion links")
 
@@ -312,7 +325,8 @@ def cmd_download_cellar_meta(args):
     else:
         logger.info(f"Downloading legislation links (include_low={include_low})...")
         leg = client.fetch_legislation_links(
-            celex_list=celex_list, max_items=max_items, include_low=include_low)
+            celex_list=celex_list, max_items=max_items, include_low=include_low,
+            doc_types=doc_types)
         client.save_legislation_links(leg)
         logger.info(f"Downloaded {len(leg)} legislation links")
 
@@ -371,7 +385,7 @@ def cmd_download_cellar_meta(args):
             logger.info(f"Cached: {name} ({path})")
             continue
         logger.info(f"Downloading {name}...")
-        df = fetch_fn(celex_list=celex_list, max_items=max_items)
+        df = fetch_fn(celex_list=celex_list, max_items=max_items, doc_types=doc_types)
         save_fn(df)
         logger.info(f"Downloaded {len(df)} {name}")
 
@@ -387,7 +401,8 @@ def cmd_download_cellar_meta(args):
         logger.info(f"Cached: admin metadata ({admin_path})")
     else:
         logger.info("Downloading admin metadata (all remaining CDM properties)...")
-        admin = client.fetch_admin_metadata(celex_list=celex_list, max_items=max_items)
+        admin = client.fetch_admin_metadata(celex_list=celex_list, max_items=max_items,
+                                             doc_types=doc_types)
         client.save_admin_metadata(admin)
         logger.info(f"Downloaded {len(admin)} admin metadata entries")
 
@@ -596,6 +611,31 @@ def cmd_enrich_network(args):
                 f"Re-run export-network to use.")
 
 
+def cmd_download_taxonomy(args):
+    """Download the CELLAR subject-matter taxonomy (codes + labels).
+
+    Fetches concept entries from EuroVoc, case-law subject matter,
+    and case-law directory classifications.  No case data needed.
+    """
+    from cjeu_py.data_collection.cellar_client import CellarClient
+    from cjeu_py import config
+
+    out_path = os.path.join(config.RAW_CELLAR_DIR, "subject_taxonomy.parquet")
+
+    if not args.force and os.path.exists(out_path):
+        import pandas as pd
+        existing = pd.read_parquet(out_path)
+        logger.info(f"Cached: {len(existing)} taxonomy entries ({out_path})")
+        logger.info("Use --force to re-download from CELLAR.")
+        return
+
+    os.makedirs(config.RAW_CELLAR_DIR, exist_ok=True)
+    client = CellarClient()
+    df = client.fetch_subject_taxonomy()
+    client.save_subject_taxonomy(df)
+    logger.info(f"Downloaded {len(df)} taxonomy entries")
+
+
 def cmd_search(args):
     """Search collected case-law data."""
     from cjeu_py.search import run_search
@@ -647,6 +687,12 @@ def build_parser():
                    help="Earliest decision date (YYYY-MM-DD)")
     p.add_argument("--date-to", type=str, default=None,
                    help="Latest decision date (YYYY-MM-DD)")
+    p.add_argument("--doc-types", type=str, default=None,
+                   help="Comma-separated CELEX document type codes to include "
+                        "(default: CJ,TJ,FJ = judgments only). "
+                        "Orders: CO,TO,FO. AG opinions: CC,TC. "
+                        "All judicial: CJ,TJ,FJ,CO,TO,FO,CC,TC,CV,CP,CD,CX. "
+                        "See CELEX_DOC_TYPES for full list.")
     p.add_argument("--skip-citations", action="store_true", help="Skip citation network download")
     p.add_argument("--skip-subjects", action="store_true", help="Skip subject matter download")
     p.add_argument("--force", action="store_true",
@@ -701,6 +747,9 @@ def build_parser():
                         "all (+ rare link types), "
                         "exhaustive (+ dossiers, summaries, misc info, successors, incorporates), "
                         "kitchen_sink (every remaining CDM property)")
+    p.add_argument("--doc-types", type=str, default=None,
+                   help="Comma-separated CELEX document type codes "
+                        "(default: CJ,TJ,FJ = judgments only)")
     p.add_argument("--force", action="store_true",
                    help="Re-download from CELLAR even if local data exists")
 
@@ -757,6 +806,12 @@ def build_parser():
     p = subparsers.add_parser("enrich-network",
                               help="Fetch metadata for external cited cases from CELLAR")
     p.add_argument("--data-dir", type=str, default=None, help="Data directory")
+    p.add_argument("--force", action="store_true",
+                   help="Re-download from CELLAR even if cached data exists")
+
+    # download-taxonomy
+    p = subparsers.add_parser("download-taxonomy",
+                              help="Download CELLAR subject-matter taxonomy (codes + labels)")
     p.add_argument("--force", action="store_true",
                    help="Re-download from CELLAR even if cached data exists")
 
@@ -818,6 +873,7 @@ def main():
         "export": cmd_export,
         "export-network": cmd_export_network,
         "enrich-network": cmd_enrich_network,
+        "download-taxonomy": cmd_download_taxonomy,
         "codebook": cmd_codebook,
         "search": cmd_search,
         "analyze": cmd_analyze,

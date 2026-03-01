@@ -27,6 +27,62 @@ logger = logging.getLogger(__name__)
 
 CDM = "http://publications.europa.eu/ontology/cdm#"
 
+# ── CELEX sector-6 document type codes ───────────────────────────────────
+# Full inventory from EUR-Lex: https://eur-lex.europa.eu/content/tools/
+#   TableOfSectors/types_of_documents_in_eurlex.html
+#
+# Keyed by 2-letter CELEX code → (description, court).
+# "court" is one of CJ (Court of Justice), GC (General Court),
+# CST (Civil Service Tribunal).
+
+CELEX_DOC_TYPES = {
+    # ── Court of Justice ──
+    "CJ": ("Judgment", "CJ"),
+    "CO": ("Order", "CJ"),
+    "CC": ("AG Opinion", "CJ"),
+    "CV": ("Opinion (avis)", "CJ"),
+    "CP": ("View (prise de position)", "CJ"),
+    "CD": ("Decision", "CJ"),
+    "CX": ("Ruling", "CJ"),
+    "CS": ("Seizure", "CJ"),
+    "CT": ("Third party proceeding", "CJ"),
+    "CN": ("Communication: new case", "CJ"),
+    "CA": ("Communication: judgment", "CJ"),
+    "CB": ("Communication: order", "CJ"),
+    "CU": ("Communication: request for opinion", "CJ"),
+    "CG": ("Communication: opinion", "CJ"),
+    # ── General Court ──
+    "TJ": ("Judgment", "GC"),
+    "TO": ("Order", "GC"),
+    "TC": ("AG Opinion", "GC"),
+    "TT": ("Third party proceeding", "GC"),
+    "TN": ("Communication: new case", "GC"),
+    "TA": ("Communication: judgment", "GC"),
+    "TB": ("Communication: order", "GC"),
+    # ── Civil Service Tribunal ──
+    "FJ": ("Judgment", "CST"),
+    "FO": ("Order", "CST"),
+    "FT": ("Third party proceeding", "CST"),
+    "FN": ("Communication: new case", "CST"),
+    "FA": ("Communication: judgment", "CST"),
+    "FB": ("Communication: order", "CST"),
+}
+
+# Predefined groups for convenience
+DOC_TYPE_JUDGMENTS = ["CJ", "TJ", "FJ"]
+DOC_TYPE_ORDERS = ["CO", "TO", "FO"]
+DOC_TYPE_AG_OPINIONS = ["CC", "TC"]
+DOC_TYPE_OTHER_JUDICIAL = ["CV", "CP", "CD", "CX"]
+DOC_TYPE_ALL_JUDICIAL = (
+    DOC_TYPE_JUDGMENTS + DOC_TYPE_ORDERS + DOC_TYPE_AG_OPINIONS + DOC_TYPE_OTHER_JUDICIAL
+)
+DOC_TYPE_COMMUNICATIONS = [
+    "CN", "CA", "CB", "CU", "CG",  # CJ
+    "TN", "TA", "TB",              # GC
+    "FN", "FA", "FB",              # CST
+]
+DOC_TYPE_PROCEDURAL = ["CS", "CT", "TT", "FT"]
+
 
 class CellarClient:
     """Client for querying CJEU case law from the CELLAR SPARQL endpoint."""
@@ -38,6 +94,22 @@ class CellarClient:
         self.sparql.setReturnFormat(JSON)
         self.sparql.setMethod(POST)
         self._last_request_time = 0
+
+    @staticmethod
+    def _celex_filter(doc_types: List[str] = None, var: str = "celex") -> str:
+        """Build a SPARQL FILTER clause for CELEX document type codes.
+
+        Args:
+            doc_types: List of 2-letter CELEX codes (e.g. ["CJ", "TJ", "FJ"]).
+                       None or empty → defaults to DOC_TYPE_JUDGMENTS.
+            var: SPARQL variable name (without ?).
+
+        Returns:
+            A FILTER(REGEX(...)) string for embedding in SPARQL WHERE clauses.
+        """
+        codes = doc_types or DOC_TYPE_JUDGMENTS
+        alternatives = "|".join(codes)
+        return f'FILTER(REGEX(?{var}, "^6[0-9]{{4}}({alternatives})"))'
 
     def _throttle(self):
         """Respect rate limit between requests."""
@@ -74,6 +146,7 @@ class CellarClient:
         date_to: str = None,
         max_items: int = None,
         offset: int = 0,
+        doc_types: List[str] = None,
     ) -> pd.DataFrame:
         """
         Fetch CJEU decision metadata from CELLAR.
@@ -88,6 +161,9 @@ class CellarClient:
             date_to: Latest decision date (YYYY-MM-DD)
             max_items: Maximum number of decisions to fetch
             offset: Starting offset for pagination
+            doc_types: CELEX document type codes to include (default: judgments
+                       only — CJ/TJ/FJ). Use DOC_TYPE_ALL_JUDICIAL for everything
+                       or pass a custom list like ["CJ", "CO", "CC"].
 
         Returns:
             DataFrame with columns: celex, ecli, date, court, resource_type,
@@ -132,7 +208,7 @@ SELECT DISTINCT ?celex ?ecli ?date ?court_code ?resource_type
        ?authentic_lang ?eea_relevant ?natural_celex
 WHERE {{
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {self._celex_filter(doc_types)}
     ?work cdm:work_date_document ?date .
     OPTIONAL {{ ?work cdm:case-law_ecli ?ecli }}
     OPTIONAL {{ ?work cdm:resource_legal_type ?court_code }}
@@ -276,6 +352,7 @@ WHERE {{
         self,
         celex_list: List[str] = None,
         max_items: int = None,
+        doc_types: List[str] = None,
     ) -> pd.DataFrame:
         """Fetch case names from expression-level metadata.
 
@@ -286,6 +363,7 @@ WHERE {{
         Returns:
             DataFrame with columns: celex, case_name, case_id
         """
+        celex_f = self._celex_filter(doc_types)
         all_rows = []
         batch_size = config.SPARQL_BATCH_SIZE
         offset = 0
@@ -304,7 +382,7 @@ SELECT DISTINCT ?celex ?parties ?titleAlt ?caseId
 WHERE {{
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?expr cdm:expression_belongs_to_work ?work .
     ?expr cdm:expression_uses_language
           <http://publications.europa.eu/resource/authority/language/ENG> .
@@ -357,36 +435,39 @@ LIMIT {limit}
         self,
         celex_list: List[str] = None,
         max_items: int = None,
+        doc_types: List[str] = None,
     ) -> pd.DataFrame:
         """
         Fetch the citation network: which cases cite which other cases.
-        
+
         Args:
             celex_list: Optional list of citing CELEX numbers to filter
             max_items: Maximum citation pairs to fetch
-            
+            doc_types: CELEX document type codes (default: judgments only)
+
         Returns:
             DataFrame with columns: citing_celex, cited_celex
         """
+        celex_f = self._celex_filter(doc_types, var="citing_celex")
         all_rows = []
         batch_size = config.SPARQL_BATCH_SIZE
         offset = 0
-        
+
         while True:
             limit = min(batch_size, max_items - len(all_rows)) if max_items else batch_size
-            
+
             celex_filter = ""
             if celex_list:
                 values = " ".join(f'"{c}"' for c in celex_list)
                 celex_filter = f"VALUES ?citing_celex {{ {values} }}"
-            
+
             query = f"""
 PREFIX cdm: <{CDM}>
 SELECT DISTINCT ?citing_celex ?cited_celex
 WHERE {{
     {celex_filter}
     ?citing_work cdm:resource_legal_id_celex ?citing_celex .
-    FILTER(REGEX(?citing_celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?citing_work cdm:work_cites_work ?cited_work .
     ?cited_work cdm:resource_legal_id_celex ?cited_celex .
 }}
@@ -508,6 +589,7 @@ LIMIT {limit}
         celex_list: List[str] = None,
         max_items: int = None,
         extract_celex: bool = False,
+        doc_types: List[str] = None,
     ) -> pd.DataFrame:
         """Generic fetcher for 1-to-many CELLAR relationships.
 
@@ -517,7 +599,9 @@ LIMIT {limit}
             celex_list: Optional filter on citing CELEX
             max_items: Max rows
             extract_celex: If True, resolve target URI to its CELEX number
+            doc_types: CELEX document type codes (default: judgments only)
         """
+        celex_f = self._celex_filter(doc_types)
         all_rows = []
         batch_size = config.SPARQL_BATCH_SIZE
         offset = 0
@@ -535,7 +619,7 @@ LIMIT {limit}
                 body = f"""
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?work cdm:{cdm_property} ?targetWork .
     ?targetWork cdm:resource_legal_id_celex ?{target_col} ."""
             else:
@@ -543,7 +627,7 @@ LIMIT {limit}
                 body = f"""
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?work cdm:{cdm_property} ?targetUri .
     BIND(REPLACE(STR(?targetUri), "^.*/", "") AS ?{target_col})"""
 
@@ -568,29 +652,34 @@ LIMIT {limit}
         cols = ["celex", target_col]
         return pd.DataFrame(all_rows) if all_rows else pd.DataFrame(columns=cols)
 
-    def fetch_joined_cases(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_joined_cases(self, celex_list: List[str] = None, max_items: int = None,
+                           doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch joined-case links. Returns celex → joined_celex pairs."""
         df = self._fetch_pairs("case-law_joins_case_court", "joined_celex",
-                               celex_list, max_items)
+                               celex_list, max_items, doc_types=doc_types)
         logger.info(f"Fetched {len(df)} joined-case links from CELLAR")
         return df
 
-    def fetch_appeals(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_appeals(self, celex_list: List[str] = None, max_items: int = None,
+                      doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch appeal links (case → appeal case). Returns celex → appeal_celex pairs."""
         df = self._fetch_pairs("case-law_subject_to_appeal_in_case_court", "appeal_celex",
-                               celex_list, max_items)
+                               celex_list, max_items, doc_types=doc_types)
         logger.info(f"Fetched {len(df)} appeal links from CELLAR")
         return df
 
-    def fetch_annulled_acts(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_annulled_acts(self, celex_list: List[str] = None, max_items: int = None,
+                            doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch acts declared void by a decision. Returns celex → annulled_celex pairs."""
         df = self._fetch_pairs("case-law_declares_void_resource_legal", "annulled_celex",
-                               celex_list, max_items, extract_celex=True)
+                               celex_list, max_items, extract_celex=True, doc_types=doc_types)
         logger.info(f"Fetched {len(df)} annulled-act links from CELLAR")
         return df
 
-    def fetch_interveners(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_interveners(self, celex_list: List[str] = None, max_items: int = None,
+                          doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch intervener/observer agent names. Returns celex → agent_name pairs."""
+        celex_f = self._celex_filter(doc_types)
         all_rows = []
         batch_size = config.SPARQL_BATCH_SIZE
         offset = 0
@@ -609,7 +698,7 @@ SELECT DISTINCT ?celex ?agent_name
 WHERE {{
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?work cdm:case-law_commented_by_agent ?agentUri .
     ?agentUri cdm:agent_name ?agent_name .
 }}
@@ -632,8 +721,10 @@ LIMIT {limit}
 
     # ── AG opinion links ───────────────────────────────────────────────────
 
-    def fetch_ag_opinions(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_ag_opinions(self, celex_list: List[str] = None, max_items: int = None,
+                          doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch judgment → AG opinion links. Returns celex → ag_opinion_celex pairs."""
+        celex_f = self._celex_filter(doc_types)
         all_rows = []
         batch_size = config.SPARQL_BATCH_SIZE
         offset = 0
@@ -652,7 +743,7 @@ SELECT DISTINCT ?celex ?ag_opinion_celex
 WHERE {{
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?work cdm:case-law_has_conclusions_opinion_advocate-general ?agWork .
     ?agWork cdm:resource_legal_id_celex ?ag_opinion_celex .
 }}
@@ -704,12 +795,14 @@ LIMIT {limit}
         celex_list: List[str] = None,
         max_items: int = None,
         include_low: bool = False,
+        doc_types: List[str] = None,
     ) -> pd.DataFrame:
         """Fetch case-to-legislation links (interprets, confirms, amends, etc.).
 
         Returns DataFrame with columns: celex, legislation_celex, link_type.
         Set include_low=True to also fetch rare link types (<100 entries each).
         """
+        celex_f = self._celex_filter(doc_types)
         link_types = list(self.LEGISLATION_LINK_TYPES_HIGH)
         if include_low:
             link_types.extend(self.LEGISLATION_LINK_TYPES_LOW)
@@ -734,7 +827,7 @@ SELECT DISTINCT ?celex ?legislation_celex
 WHERE {{
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?work cdm:{cdm_prop} ?legWork .
     ?legWork cdm:resource_legal_id_celex ?legislation_celex .
 }}
@@ -867,14 +960,15 @@ LIMIT {limit}
 
     # ── Exhaustive-tier metadata ─────────────────────────────────────────
 
-    def fetch_dossiers(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_dossiers(self, celex_list: List[str] = None, max_items: int = None,
+                       doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch dossier groupings for cases.
 
         Returns DataFrame with columns: celex, dossier_uri.
         """
         return self._fetch_pairs(
             "work_part_of_dossier", "dossier_uri",
-            celex_list, max_items)
+            celex_list, max_items, doc_types=doc_types)
 
     def fetch_summaries(
         self,
@@ -972,23 +1066,25 @@ LIMIT {limit}
         logger.info(f"Fetched {len(df)} misc info entries from CELLAR")
         return df
 
-    def fetch_successors(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_successors(self, celex_list: List[str] = None, max_items: int = None,
+                         doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch case succession chains (logical successor relationships).
 
         Returns DataFrame with columns: celex, successor_celex.
         """
         return self._fetch_pairs(
             "work_is_logical_successor_of_work", "successor_celex",
-            celex_list, max_items, extract_celex=True)
+            celex_list, max_items, extract_celex=True, doc_types=doc_types)
 
-    def fetch_incorporates(self, celex_list: List[str] = None, max_items: int = None) -> pd.DataFrame:
+    def fetch_incorporates(self, celex_list: List[str] = None, max_items: int = None,
+                           doc_types: List[str] = None) -> pd.DataFrame:
         """Fetch legislative incorporation links.
 
         Returns DataFrame with columns: celex, incorporated_celex.
         """
         return self._fetch_pairs(
             "resource_legal_incorporates_resource_legal", "incorporated_celex",
-            celex_list, max_items, extract_celex=True)
+            celex_list, max_items, extract_celex=True, doc_types=doc_types)
 
     # ── Kitchen-sink tier: all remaining CDM properties ──────────────────
 
@@ -1017,11 +1113,13 @@ LIMIT {limit}
         self,
         celex_list: List[str] = None,
         max_items: int = None,
+        doc_types: List[str] = None,
     ) -> pd.DataFrame:
         """Fetch all remaining CDM properties as long-format triples.
 
         Returns DataFrame with columns: celex, property, value.
         """
+        celex_f = self._celex_filter(doc_types)
         all_rows = []
 
         for prop_name, cdm_prop in self.ADMIN_PROPERTIES:
@@ -1043,7 +1141,7 @@ SELECT DISTINCT ?celex ?value
 WHERE {{
     {celex_filter}
     ?work cdm:resource_legal_id_celex ?celex .
-    FILTER(REGEX(?celex, "^6[0-9]{{4}}(CJ|TJ|FJ)"))
+    {celex_f}
     ?work cdm:{cdm_prop} ?value .
 }}
 OFFSET {offset}
@@ -1097,6 +1195,121 @@ LIMIT {limit}
         os.makedirs(os.path.dirname(path), exist_ok=True)
         df.to_parquet(path, index=False)
         logger.info(f"Saved {len(df)} subject matter entries to {path}")
+
+    # ── Subject taxonomy (standalone) ─────────────────────────────────────
+
+    def fetch_subject_taxonomy(self) -> pd.DataFrame:
+        """Fetch the CELLAR subject-matter taxonomy (codes + labels only).
+
+        Downloads the concept hierarchy from the same four CELLAR taxonomies
+        used by fetch_subject_matter(), but without linking to individual
+        cases.  This gives a complete reference table of all available
+        subject codes and their English labels.
+
+        Returns:
+            DataFrame with columns: code, label, source
+        """
+        all_rows = []
+        sources = [
+            ("eurovoc",
+             "http://eurovoc.europa.eu/",
+             """
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT DISTINCT ?code ?label WHERE {{
+    ?concept a skos:Concept .
+    FILTER(STRSTARTS(STR(?concept), "http://eurovoc.europa.eu/"))
+    ?concept skos:prefLabel ?label .
+    FILTER(LANG(?label) = "en")
+    BIND(REPLACE(STR(?concept), "http://eurovoc.europa.eu/", "") AS ?code)
+}}
+ORDER BY ?code
+OFFSET {offset} LIMIT {limit}
+"""),
+            ("case_law_subject",
+             "http://publications.europa.eu/resource/authority/case-law-subject-matter/",
+             """
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT DISTINCT ?code ?label WHERE {{
+    ?concept a skos:Concept .
+    FILTER(STRSTARTS(STR(?concept),
+           "http://publications.europa.eu/resource/authority/case-law-subject-matter/"))
+    ?concept skos:prefLabel ?label .
+    FILTER(LANG(?label) = "en")
+    BIND(REPLACE(STR(?concept),
+         "http://publications.europa.eu/resource/authority/case-law-subject-matter/", "")
+         AS ?code)
+}}
+ORDER BY ?code
+OFFSET {offset} LIMIT {limit}
+"""),
+            ("case_law_directory",
+             "http://publications.europa.eu/resource/authority/fd_578/",
+             """
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT DISTINCT ?code ?label WHERE {{
+    ?concept a skos:Concept .
+    FILTER(STRSTARTS(STR(?concept),
+           "http://publications.europa.eu/resource/authority/fd_578/"))
+    ?concept skos:prefLabel ?label .
+    FILTER(LANG(?label) = "en")
+    BIND(REPLACE(STR(?concept),
+         "http://publications.europa.eu/resource/authority/fd_578/", "")
+         AS ?code)
+}}
+ORDER BY ?code
+OFFSET {offset} LIMIT {limit}
+"""),
+            ("case_law_directory_old",
+             "http://publications.europa.eu/resource/authority/fd_577/",
+             """
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+SELECT DISTINCT ?code ?label WHERE {{
+    ?concept a skos:Concept .
+    FILTER(STRSTARTS(STR(?concept),
+           "http://publications.europa.eu/resource/authority/fd_577/"))
+    ?concept skos:prefLabel ?label .
+    FILTER(LANG(?label) = "en")
+    BIND(REPLACE(STR(?concept),
+         "http://publications.europa.eu/resource/authority/fd_577/", "")
+         AS ?code)
+}}
+ORDER BY ?code
+OFFSET {offset} LIMIT {limit}
+"""),
+        ]
+
+        for source_name, _uri, query_tpl in sources:
+            offset = 0
+            batch_size = config.SPARQL_BATCH_SIZE
+            while True:
+                query = query_tpl.format(offset=offset, limit=batch_size)
+                logger.info(f"Fetching {source_name} taxonomy: offset={offset}")
+                rows = self._query(query)
+                if not rows:
+                    break
+                for r in rows:
+                    r["source"] = source_name
+                all_rows.extend(rows)
+                offset += len(rows)
+                logger.info(f"  → Got {len(rows)} concepts (total {source_name}: {offset})")
+                if len(rows) < batch_size:
+                    break
+
+        df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame(
+            columns=["code", "label", "source"]
+        )
+        df = df.drop_duplicates(subset=["code", "source"], keep="first")
+        logger.info(f"Fetched {len(df)} taxonomy entries "
+                     f"({df['source'].value_counts().to_dict() if len(df) else {}})")
+        return df
+
+    def save_subject_taxonomy(self, df: pd.DataFrame, path: str = None):
+        """Save subject taxonomy as Parquet."""
+        path = path or os.path.join(config.RAW_CELLAR_DIR, "subject_taxonomy.parquet")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        df.to_parquet(path, index=False)
+        logger.info(f"Saved {len(df)} taxonomy entries to {path}")
+        return path
 
     def save_joined_cases(self, df: pd.DataFrame, path: str = None):
         """Save joined-cases DataFrame as Parquet."""
