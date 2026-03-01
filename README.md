@@ -23,7 +23,7 @@ The goal is a toolkit that fits naturally into the workflows that computational 
 
 | Stage | What | How |
 |-------|------|-----|
-| **Collect** | Case metadata, citation networks, subject matter (4 taxonomies), procedural links, legislation links, AG opinion links, academic citations, referring court details | CELLAR SPARQL endpoint (CDM ontology) |
+| **Collect** | Case metadata, citation networks, subject matter (4 taxonomies), procedural links, legislation links, AG opinion links, academic citations, referring court details. Configurable document types: judgments, orders, AG opinions, and more via `--doc-types` | CELLAR SPARQL endpoint (CDM ontology) |
 | **Download** | Full judgment and AG opinion texts | CELLAR REST API (content negotiation, XHTML) |
 | **Parse** | Court composition, parties, representatives, procedural dates | XHTML header parser (structural, not heuristic) |
 | **Derive** | Judge assignments, case names, operative parts | Flattened from parsed headers |
@@ -188,6 +188,9 @@ cjeu-py export --format csv
 # Generate variable codebook
 cjeu-py codebook
 
+# Download CELLAR subject-matter taxonomy
+cjeu-py download-taxonomy
+
 # Browse downloaded data in the terminal
 cjeu-py browse                          # list all tables with row counts
 cjeu-py browse decisions                # preview first 20 rows
@@ -196,7 +199,7 @@ cjeu-py browse decisions --columns      # column names, types, nulls
 cjeu-py browse text 62019CJ0311        # read a judgment text
 ```
 
-All variable definitions are documented in [`CODEBOOK.md`](CODEBOOK.md).
+All variable definitions are documented in [`CODEBOOK.md`](CODEBOOK.md). For full argument details on every command, see the [`CLI reference`](docs/cli-reference.md).
 
 ## Data directory
 
@@ -396,7 +399,7 @@ cjeu-py/
 ├── examples/                          # Pre-built example outputs
 ├── docs/                              # Logo, screenshots, CLI reference
 ├── data/                              # Pipeline output (Parquet, JSONL, cached XHTML)
-├── tests/                             # 93 tests
+├── tests/                             # 107 tests
 ├── CODEBOOK.md                        # Variable definitions for all tables
 ├── CITATION.cff                       # Academic citation metadata
 ├── LICENSE                            # MIT

@@ -7,7 +7,7 @@ authors:
   - family-names: "Ridi"
     given-names: "Niccolò"
     orcid: "https://orcid.org/0000-0002-7118-9555"
-version: "0.4.0"
+version: "0.4.1"
 date-released: "2026-02-26"
 license: MIT
 repository-code: "https://github.com/niccoloridi/cjeu-py"
