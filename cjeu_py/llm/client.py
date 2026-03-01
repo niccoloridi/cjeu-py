@@ -1,13 +1,11 @@
 """
-Gemini LLM client — wrapper for google-genai SDK.
+LLM client — wrappers for Gemini and OpenAI-compatible APIs.
 Provides structured JSON generation for citation classification.
 Includes exponential backoff retry on rate-limit (429) errors.
 """
 import json
 import logging
 import time
-from google import genai
-from google.genai import types
 from cjeu_py import config
 
 logger = logging.getLogger(__name__)
@@ -16,8 +14,22 @@ MAX_RETRIES = 3
 INITIAL_BACKOFF = 2  # seconds
 
 
-def get_gemini_client() -> genai.Client:
+def _import_genai():
+    """Lazy import google-genai with a helpful error message."""
+    try:
+        from google import genai
+        from google.genai import types
+        return genai, types
+    except ImportError:
+        raise ImportError(
+            "google-genai is required for Gemini classification. "
+            "Install it with: pip install 'cjeu-py[llm]'"
+        )
+
+
+def get_gemini_client():
     """Initialise and return the Gemini client."""
+    genai, _ = _import_genai()
     if not config.GEMINI_API_KEY:
         raise ValueError(
             "GEMINI_API_KEY not set. Either set the environment variable "
@@ -27,7 +39,7 @@ def get_gemini_client() -> genai.Client:
 
 
 def classify_citation(
-    client: genai.Client,
+    client,
     prompt: str,
     response_schema: dict,
     model: str = None,
@@ -45,6 +57,7 @@ def classify_citation(
     Returns:
         dict with classification results + _meta with token counts
     """
+    _, types = _import_genai()
     model = model or config.GEMINI_MODEL
 
     for attempt in range(MAX_RETRIES + 1):
@@ -226,8 +239,8 @@ def classify_citation_openai(
             }
 
 
-def count_tokens(client: genai.Client, text: str, model: str = None) -> int:
-    """Count tokens for a given text using the model."""
+def count_tokens(client, text: str, model: str = None) -> int:
+    """Count tokens for a given text using the Gemini model."""
     model = model or config.GEMINI_MODEL
     try:
         response = client.models.count_tokens(model=model, contents=text)

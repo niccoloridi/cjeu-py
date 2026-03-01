@@ -33,8 +33,10 @@ GEMINI_MAX_WORKERS = 5        # concurrent Gemini API calls (safe for free tier)
 GEMINI_SUBMIT_DELAY = 0.05    # seconds between submissions
 
 # ── Data paths ────────────────────────────────────────────────────────────────
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
+# Default: ~/.cjeu-py/data/  (overridable with CJEU_DATA_DIR env var or --data-dir)
+DATA_ROOT = os.environ.get("CJEU_DATA_DIR") or os.path.join(
+    os.path.expanduser("~"), ".cjeu-py", "data"
+)
 
 RAW_CELLAR_DIR = os.path.join(DATA_ROOT, "raw", "cellar")
 RAW_TEXTS_DIR = os.path.join(DATA_ROOT, "raw", "texts")

@@ -93,10 +93,10 @@ Networks above 5,000 nodes trigger a performance warning; above 10,000 a stronge
 # Install from PyPI
 pip install cjeu-py
 
-# Or install with all optional dependencies (LLM, network analysis, visualisation)
+# Or install with all optional dependencies (LLM classification, statistical analysis, visualisation)
 pip install cjeu-py[all]
 
-# Set your Gemini API key (only needed for classification)
+# Set your Gemini API key (only needed for LLM classification)
 export GEMINI_API_KEY="your-key-here"
 
 # Download metadata from CELLAR (cached to disk – runs once, then instant)
@@ -165,6 +165,30 @@ cjeu-py codebook
 ```
 
 All variable definitions are documented in [`CODEBOOK.md`](CODEBOOK.md).
+
+## Data directory
+
+By default, all downloaded data is stored in `~/.cjeu-py/data/`. You can override this with the `CJEU_DATA_DIR` environment variable or the `--data-dir` flag on any command:
+
+```bash
+# Use a custom directory
+export CJEU_DATA_DIR="/path/to/my/data"
+
+# Or per-command
+cjeu-py download-cellar --data-dir ./my-project/data
+```
+
+## Optional dependencies
+
+The base install (`pip install cjeu-py`) includes everything needed for data collection, text extraction, citation parsing, network export, and search. Optional extras:
+
+| Extra | What it adds | Install |
+|-------|-------------|---------|
+| `llm` | Gemini classification | `pip install 'cjeu-py[llm]'` |
+| `openai-llm` | OpenAI-compatible classification (Ollama, vLLM, etc.) | `pip install 'cjeu-py[openai-llm]'` |
+| `analysis` | scipy, scikit-learn, statsmodels | `pip install 'cjeu-py[analysis]'` |
+| `viz` | matplotlib, seaborn | `pip install 'cjeu-py[viz]'` |
+| `all` | Everything above | `pip install 'cjeu-py[all]'` |
 
 ## Local model support
 

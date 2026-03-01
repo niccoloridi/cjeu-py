@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cjeu-py"
-version = "0.2.3"
+version = "0.3.0"
 description = "Python toolkit for empirical research on the Court of Justice of the European Union"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -43,12 +43,13 @@ dependencies = [
     "regex>=2023.0",
     "tqdm>=4.65",
     "jsonlines>=4.0",
+    "networkx>=3.1",
 ]
 
 [project.optional-dependencies]
 llm = ["google-genai>=1.0"]
 openai-llm = ["openai>=1.0"]
-analysis = ["networkx>=3.1", "scipy>=1.11", "scikit-learn>=1.3", "statsmodels>=0.14"]
+analysis = ["scipy>=1.11", "scikit-learn>=1.3", "statsmodels>=0.14"]
 viz = ["matplotlib>=3.7", "seaborn>=0.12"]
 all = ["cjeu-py[llm,openai-llm,analysis,viz]"]
 dev = ["pytest>=7.4"]
