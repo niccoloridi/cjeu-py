@@ -33,6 +33,7 @@ The goal is a toolkit that fits naturally into the workflows that computational 
 | **Scrape** *(optional)* | Judge biographical data (all current and former members) | Curia.europa.eu + LLM structured extraction (requires API key) |
 | **Search** | Full-text, party, citation graph, topic, legislation, and live CELLAR headnote queries | `cjeu-py search text "proportionality"` |
 | **Network** | Interactive citation network with centrality metrics, community detection, subject/procedure/year filters | Self-contained HTML (D3.js), GEXF (Gephi / Gephi Lite), D3 JSON |
+| **Browse** | List tables, preview rows, column info, statistics, judgment texts | `cjeu-py browse decisions --stats` |
 | **Export** | All tables as CSV or Excel | `cjeu-py export --format csv` |
 | **GUI** | Browser-based interface for all of the above (download, browse, search, network export) | Streamlit (`pip install streamlit`) |
 
@@ -186,6 +187,13 @@ cjeu-py export --format csv
 
 # Generate variable codebook
 cjeu-py codebook
+
+# Browse downloaded data in the terminal
+cjeu-py browse                          # list all tables with row counts
+cjeu-py browse decisions                # preview first 20 rows
+cjeu-py browse decisions --stats        # descriptive statistics
+cjeu-py browse decisions --columns      # column names, types, nulls
+cjeu-py browse text 62019CJ0311        # read a judgment text
 ```
 
 All variable definitions are documented in [`CODEBOOK.md`](CODEBOOK.md).
@@ -374,18 +382,19 @@ The taxonomy draws on Marc Jacob's *Precedents and Case-Based Reasoning in the E
 ```
 cjeu-py/
 ├── cjeu_py/                           # Core library (pip-installable)
-│   ├── main.py                        # CLI entry point (15 commands)
+│   ├── main.py                        # CLI entry point (18 commands)
 │   ├── config.py                      # Central configuration
 │   ├── data_collection/               # CELLAR SPARQL + REST clients, header parser, Curia scraper
 │   ├── citation_extraction/           # Regex patterns, context windows, party name matching
 │   ├── search.py                      # CLI search (8 modes: text, headnote, party, citing, etc.)
+│   ├── browse.py                      # CLI data browser (tables, stats, text viewer)
 │   ├── classification/                # LLM pipeline with checkpointing & cost tracking
 │   ├── llm/                           # Gemini + OpenAI-compatible API wrapper
 │   └── utils/                         # XHTML parsing, logging utilities
 │
 ├── gui/                               # Streamlit browser GUI (single-file app)
 ├── examples/                          # Pre-built example outputs
-├── docs/                              # Logo, screenshots
+├── docs/                              # Logo, screenshots, CLI reference
 ├── data/                              # Pipeline output (Parquet, JSONL, cached XHTML)
 ├── tests/                             # 93 tests
 ├── CODEBOOK.md                        # Variable definitions for all tables

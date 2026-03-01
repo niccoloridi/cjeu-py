@@ -657,6 +657,32 @@ def cmd_search(args):
     print(output)
 
 
+def cmd_browse(args):
+    """Browse pipeline data in the terminal."""
+    from cjeu_py.browse import run_browse, show_text
+    from cjeu_py import config
+
+    data_dir = getattr(args, "data_dir", None) or config.DATA_ROOT
+
+    # Special mode: browse text <celex>
+    if getattr(args, "table", "") == "text":
+        celex = getattr(args, "celex", None)
+        if not celex:
+            print("Usage: cjeu-py browse text <celex>")
+            return
+        print(show_text(data_dir, celex))
+        return
+
+    print(run_browse(
+        data_dir=data_dir,
+        table=getattr(args, "table", "") or "",
+        stats=getattr(args, "stats", False),
+        columns=getattr(args, "columns", False),
+        limit=getattr(args, "limit", 20),
+        fmt=getattr(args, "format", "table"),
+    ))
+
+
 def cmd_analyze(args):
     """Run analysis scripts (stub)."""
     logger.info("Analysis module not yet implemented.")
@@ -845,6 +871,30 @@ def build_parser():
     p.add_argument("--verbose", action="store_true",
                    help="Show full text snippets (text mode)")
 
+    # browse
+    p = subparsers.add_parser(
+        "browse",
+        help="Browse pipeline data in the terminal",
+        description="List tables, preview rows, show statistics, "
+                    "or read judgment texts. Terminal equivalent of "
+                    "the GUI's Browse Data tab.")
+    p.add_argument("table", type=str, nargs="?", default="",
+                   help="Table name (e.g. decisions, citations_cellar). "
+                        "Omit to list all tables. Use 'text' to view a judgment.")
+    p.add_argument("celex", type=str, nargs="?", default=None,
+                   help="CELEX number (only with 'browse text <celex>')")
+    p.add_argument("--stats", action="store_true",
+                   help="Show descriptive statistics")
+    p.add_argument("--columns", action="store_true",
+                   help="List column names, types, and null counts")
+    p.add_argument("--limit", type=int, default=20,
+                   help="Number of rows to preview (default: 20)")
+    p.add_argument("--format", type=str, default="table",
+                   choices=["table", "csv", "json"],
+                   help="Output format (default: table)")
+    p.add_argument("--data-dir", type=str, default=None,
+                   help="Data directory override")
+
     # analyze
     subparsers.add_parser("analyze", help="Run analysis scripts")
 
@@ -876,6 +926,7 @@ def main():
         "download-taxonomy": cmd_download_taxonomy,
         "codebook": cmd_codebook,
         "search": cmd_search,
+        "browse": cmd_browse,
         "analyze": cmd_analyze,
     }
     
