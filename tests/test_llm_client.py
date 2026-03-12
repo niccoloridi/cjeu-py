@@ -4,21 +4,35 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from cjeu_py.llm.client import _build_schema_instruction
-from cjeu_py.classification.prompts import CITATION_CLASSIFICATION_SCHEMA
+from cjeu_py.classification.prompts import (
+    CITATION_CLASSIFICATION_SCHEMA,
+    CITATION_CLASSIFICATION_SCHEMA_LEGACY,
+)
 
 
 def test_build_schema_instruction_contains_required_keys():
     """Schema instruction includes all required keys and enum values."""
     instruction = _build_schema_instruction(CITATION_CLASSIFICATION_SCHEMA)
-    assert "precision" in instruction
-    assert "string_citation" in instruction
+    assert "polarity" in instruction
+    assert "POSITIVE" in instruction
     assert "REQUIRED" in instruction
     assert "JSON object" in instruction
 
 
 def test_build_schema_instruction_enum_values():
-    """All enum values appear in the schema instruction."""
+    """All enum values appear in the schema instruction (Jacob taxonomy)."""
     instruction = _build_schema_instruction(CITATION_CLASSIFICATION_SCHEMA)
+    for val in ["POSITIVE", "NEGATIVE_DISTINGUISHING", "NEGATIVE_DEPARTING"]:
+        assert val in instruction
+    for val in ["VERBATIM", "GENERAL", "STRING", "SUBSTANTIVE"]:
+        assert val in instruction
+    for val in ["CLASSIFY", "STATE_LAW", "AFFIRM_CONCLUSION"]:
+        assert val in instruction
+
+
+def test_build_schema_instruction_legacy():
+    """Legacy schema instruction includes original enum values."""
+    instruction = _build_schema_instruction(CITATION_CLASSIFICATION_SCHEMA_LEGACY)
     for val in ["string_citation", "general_reference", "substantive_engagement"]:
         assert val in instruction
     for val in ["legal_test", "principle", "distinguish"]:
@@ -48,13 +62,47 @@ def test_classify_citation_openai_success():
     result = classify_citation_openai(
         client=mock_client,
         prompt="Test prompt",
-        response_schema=CITATION_CLASSIFICATION_SCHEMA,
+        response_schema=CITATION_CLASSIFICATION_SCHEMA_LEGACY,
         model="test-model",
     )
     assert result["precision"] == "general_reference"
     assert result["_meta"]["provider"] == "openai"
     assert result["_meta"]["input_tokens"] == 100
     assert result["_meta"]["error"] is None
+
+
+def test_classify_citation_openai_jacob_schema():
+    """Mock OpenAI client returns valid Jacob-taxonomy JSON."""
+    from cjeu_py.llm.client import classify_citation_openai
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps({
+        "polarity": "POSITIVE",
+        "precision": "STRING",
+        "function": "STATE_LAW",
+        "distinguishing_type": "NONE",
+        "departing_grounds": [],
+        "surface_coherence": True,
+        "triangle_side": "NONE",
+        "topic": "free movement of goods",
+        "confidence": 0.85,
+        "reasoning": "String citation following settled case law.",
+    })
+    mock_response.usage = MagicMock(prompt_tokens=150, completion_tokens=80)
+    mock_client.chat.completions.create.return_value = mock_response
+
+    result = classify_citation_openai(
+        client=mock_client,
+        prompt="Test prompt",
+        response_schema=CITATION_CLASSIFICATION_SCHEMA,
+        model="test-model",
+    )
+    assert result["polarity"] == "POSITIVE"
+    assert result["function"] == "STATE_LAW"
+    assert result["departing_grounds"] == []
+    assert result["surface_coherence"] is True
 
 
 def test_classify_citation_openai_malformed_json_retry():
@@ -84,7 +132,7 @@ def test_classify_citation_openai_malformed_json_retry():
     result = classify_citation_openai(
         client=mock_client,
         prompt="Test prompt",
-        response_schema=CITATION_CLASSIFICATION_SCHEMA,
+        response_schema=CITATION_CLASSIFICATION_SCHEMA_LEGACY,
     )
     assert result["precision"] == "string_citation"
     assert mock_client.chat.completions.create.call_count == 2
@@ -112,7 +160,7 @@ def test_classify_citation_openai_strips_code_fences():
     result = classify_citation_openai(
         client=mock_client,
         prompt="Test",
-        response_schema=CITATION_CLASSIFICATION_SCHEMA,
+        response_schema=CITATION_CLASSIFICATION_SCHEMA_LEGACY,
     )
     assert result["precision"] == "substantive_engagement"
 

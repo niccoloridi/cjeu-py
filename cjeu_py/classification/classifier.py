@@ -1,6 +1,6 @@
 """
-Unified citation classifier — classifies precision, use, treatment,
-and topic in a single LLM call per citation.
+Unified citation classifier — classifies citations using either the
+Jacob taxonomy (default, 5-layer) or the legacy taxonomy (3-dimension).
 
 Supports Gemini (default) and OpenAI-compatible providers (Ollama, vLLM, etc.).
 """
@@ -11,6 +11,9 @@ from cjeu_py.classification.prompts import (
     SYSTEM_PROMPT,
     CITATION_CLASSIFICATION_SCHEMA,
     build_classification_prompt,
+    SYSTEM_PROMPT_LEGACY,
+    CITATION_CLASSIFICATION_SCHEMA_LEGACY,
+    build_classification_prompt_legacy,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,18 +28,30 @@ _model = None
 _api_base = None
 _api_key = None
 
+# Taxonomy config
+_taxonomy = "jacob"
+
 
 def configure_provider(provider: str = "gemini", model: str = None,
-                       api_base: str = None, api_key: str = None):
-    """Configure the LLM provider for classification.
+                       api_base: str = None, api_key: str = None,
+                       taxonomy: str = "jacob"):
+    """Configure the LLM provider and taxonomy for classification.
 
     Called from main.py before the pipeline starts.
+
+    Args:
+        provider: "gemini" or "openai"
+        model: Model name override
+        api_base: API base URL (OpenAI provider only)
+        api_key: API key (OpenAI provider only)
+        taxonomy: "jacob" (default, 5-layer) or "legacy" (3-dimension)
     """
-    global _provider, _model, _api_base, _api_key
+    global _provider, _model, _api_base, _api_key, _taxonomy
     _provider = provider
     _model = model
     _api_base = api_base
     _api_key = api_key
+    _taxonomy = taxonomy
 
 
 def _get_client():
@@ -53,6 +68,36 @@ def _get_client():
         return _gemini_client
 
 
+def _get_taxonomy_config():
+    """Return (schema, system_prompt, prompt_builder) for the active taxonomy."""
+    if _taxonomy == "legacy":
+        return (
+            CITATION_CLASSIFICATION_SCHEMA_LEGACY,
+            SYSTEM_PROMPT_LEGACY,
+            build_classification_prompt_legacy,
+        )
+    return (
+        CITATION_CLASSIFICATION_SCHEMA,
+        SYSTEM_PROMPT,
+        build_classification_prompt,
+    )
+
+
+# ── Field names per taxonomy ──────────────────────────────────────────
+
+_JACOB_FIELDS = [
+    "polarity", "precision", "function",
+    "distinguishing_type", "departing_grounds",
+    "surface_coherence", "triangle_side",
+    "topic", "confidence", "reasoning",
+]
+
+_LEGACY_FIELDS = [
+    "precision", "use", "treatment",
+    "topic", "confidence", "reasoning",
+]
+
+
 def classify_single_citation(item: Dict) -> Dict:
     """
     Classify a single citation item using the configured provider.
@@ -63,11 +108,12 @@ def classify_single_citation(item: Dict) -> Dict:
             - citation_string, paragraph_num, context_text
 
     Returns:
-        Original item + classification fields + _meta
+        Original item + classification fields + _taxonomy + _meta
     """
     client = _get_client()
+    schema, system_prompt, prompt_builder = _get_taxonomy_config()
 
-    prompt = build_classification_prompt(
+    prompt = prompt_builder(
         citing_celex=item.get("citing_celex", ""),
         citing_date=item.get("citing_date", ""),
         formation=item.get("formation", ""),
@@ -77,14 +123,14 @@ def classify_single_citation(item: Dict) -> Dict:
     )
 
     # Prepend system prompt
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{prompt}"
+    full_prompt = f"{system_prompt}\n\n{prompt}"
 
     if _provider == "openai":
         from cjeu_py.llm.client import classify_citation_openai
         result = classify_citation_openai(
             client=client,
             prompt=full_prompt,
-            response_schema=CITATION_CLASSIFICATION_SCHEMA,
+            response_schema=schema,
             model=_model,
         )
     else:
@@ -92,18 +138,16 @@ def classify_single_citation(item: Dict) -> Dict:
         result = classify_citation(
             client=client,
             prompt=full_prompt,
-            response_schema=CITATION_CLASSIFICATION_SCHEMA,
+            response_schema=schema,
             model=_model,
         )
 
     # Merge classification into original item
     output = {**item}
-    output["precision"] = result.get("precision")
-    output["use"] = result.get("use")
-    output["treatment"] = result.get("treatment")
-    output["topic"] = result.get("topic")
-    output["confidence"] = result.get("confidence")
-    output["reasoning"] = result.get("reasoning")
+    fields = _JACOB_FIELDS if _taxonomy != "legacy" else _LEGACY_FIELDS
+    for field in fields:
+        output[field] = result.get(field)
     output["_meta"] = result.get("_meta", {})
+    output["_taxonomy"] = _taxonomy
 
     return output

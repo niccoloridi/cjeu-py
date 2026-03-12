@@ -399,7 +399,7 @@ cjeu-py/
 ├── examples/                          # Pre-built example outputs
 ├── docs/                              # Logo, screenshots, CLI reference
 ├── data/                              # Pipeline output (Parquet, JSONL, cached XHTML)
-├── tests/                             # 107 tests
+├── tests/                             # 136 tests
 ├── CODEBOOK.md                        # Variable definitions for all tables
 ├── CITATION.cff                       # Academic citation metadata
 ├── LICENSE                            # MIT

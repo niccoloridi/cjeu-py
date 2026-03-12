@@ -246,6 +246,9 @@ cjeu-py classify --provider openai --api-base http://localhost:8000/v1 --api-key
 
 # Classify only 100 citations with 10 concurrent workers
 cjeu-py classify --max-items 100 --max-workers 10
+
+# Classify using the legacy 3-dimension taxonomy
+cjeu-py classify --taxonomy legacy
 ```
 
 | Argument | Type | Default | Description |
@@ -256,6 +259,7 @@ cjeu-py classify --max-items 100 --max-workers 10
 | `--model` | `STR` | provider default | Model name to use (e.g., `gemini-2.5-flash`, `gpt-4o`). |
 | `--api-base` | `STR` | provider default | Custom API base URL. |
 | `--api-key` | `STR` | from env | API key. If not provided, read from the relevant environment variable (`GEMINI_API_KEY` or `OPENAI_API_KEY`). |
+| `--taxonomy` | `STR` | `jacob` | Classification taxonomy. `jacob` uses the 5-layer framework (polarity, precision, function, distinguishing, departing + meta). `legacy` uses the original 3-dimension scheme (precision, use, treatment). |
 
 ---
 

@@ -205,12 +205,13 @@ def cmd_classify(args):
     from cjeu_py.classification.pipeline import run_classification_pipeline
     from cjeu_py import config
 
-    # Configure LLM provider
+    # Configure LLM provider and taxonomy
     configure_provider(
         provider=getattr(args, "provider", "gemini"),
         model=getattr(args, "model", None),
         api_base=getattr(args, "api_base", None),
         api_key=getattr(args, "api_key", None),
+        taxonomy=getattr(args, "taxonomy", "jacob"),
     )
     
     # Load citations for classification
@@ -756,7 +757,11 @@ def build_parser():
                         "(default: http://localhost:11434/v1)")
     p.add_argument("--api-key", type=str, default=None,
                    help="API key for --provider openai")
-    
+    p.add_argument("--taxonomy", type=str, default="jacob",
+                   choices=["jacob", "legacy"],
+                   help="Classification taxonomy: jacob (default, 5-layer) "
+                        "or legacy (3-dimension)")
+
     # validate
     p = subparsers.add_parser("validate", help="Export human validation sample")
     p.add_argument("--sample-size", type=int, default=200, help="Number of citations to sample")
