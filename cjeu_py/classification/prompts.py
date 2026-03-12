@@ -248,6 +248,20 @@ STRING + POSITIVE + STATE_LAW or AFFIRM_CONCLUSION.
 - BETA: Precedent vs Current Case under pressure (distinguishing)
 - GAMMA: Precedent vs Norm under pressure (departing)
 
+**CRITICAL — WHOSE VOICE?**
+CJEU judgments routinely report parties' submissions before giving the
+Court's own reasoning. When the citing paragraph merely REPORTS a party's
+argument about a precedent (signalled by phrases like "the applicant
+submits that…", "according to the appellant…", "the Commission argues
+that…", "X contends that the General Court erred in relying on…"),
+classify the citation from THE COURT'S perspective, NOT the party's.
+If the Court is neutrally recounting a party's criticism of a precedent
+without itself endorsing that criticism, the polarity is typically
+POSITIVE (the Court is not itself rejecting the precedent) and the
+function is CLASSIFY (framing the dispute). Reserve NEGATIVE polarity
+for passages where the Court or AG itself — in its own analytical
+voice — distinguishes or departs from the precedent.
+
 Be precise and consistent. For POSITIVE polarity, set distinguishing_type
 to NONE, departing_grounds to [], and triangle_side to NONE."""
 
